@@ -1,4 +1,4 @@
-﻿// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT
 // Copyright (c) 2026 principalwater
 using System;
 using System.Collections.Generic;
@@ -27,10 +27,8 @@ namespace BrightnessCtl
         private int _current = -1;
         private Icon _icon;
 
-        private Native.LowLevelKeyboardProc _hookProc; // must outlive the hook
-        private IntPtr _hook = IntPtr.Zero;
+        private KeyboardHook _keyboard;
         private Control _marshal;                      // hops work onto the UI thread
-        private readonly WinTimer _hookKeeper = new WinTimer();
 
         private bool _rawInputOk;
         private int _pendingSteps;
@@ -99,14 +97,9 @@ namespace BrightnessCtl
             _marshal = new Control();
             IntPtr forceHandle = _marshal.Handle;
             GC.KeepAlive(forceHandle);
-            InstallHook();
-
-            // Low-level hooks are called newest-first, and Boot Camp installs
-            // its own at sign-in. Re-arming ours keeps it in front of Boot Camp
-            // even if that process restarts later.
-            _hookKeeper.Interval = 60000;
-            _hookKeeper.Tick += delegate { if (Config.GrabF1F2) InstallHook(); };
-            _hookKeeper.Start();
+            _hk.KeyStep += Queue;
+            _keyboard = new KeyboardHook(_hk.Handle, Config.GrabF1F2);
+            Log.Write("input: dedicated hook thread active=" + _keyboard.IsActive);
 
             SystemEvents.DisplaySettingsChanged += OnDisplaySettingsChanged;
             SystemEvents.PowerModeChanged += OnPowerModeChanged;
@@ -335,63 +328,6 @@ namespace BrightnessCtl
             Nudge(steps * Config.Step);
         }
 
-        private void InstallHook()
-        {
-            RemoveHook();
-            if (!Config.GrabF1F2) return;
-            _hookProc = HookCallback;
-            _hook = Native.SetWindowsHookEx(Native.WH_KEYBOARD_LL, _hookProc,
-                Native.GetModuleHandle(null), 0);
-        }
-
-        private void RemoveHook()
-        {
-            if (_hook != IntPtr.Zero)
-            {
-                Native.UnhookWindowsHookEx(_hook);
-                _hook = IntPtr.Zero;
-            }
-        }
-
-        private static bool ModifierHeld()
-        {
-            return (Native.GetAsyncKeyState(Native.VK_CONTROL) & 0x8000) != 0
-                || (Native.GetAsyncKeyState(Native.VK_MENU) & 0x8000) != 0
-                || (Native.GetAsyncKeyState(Native.VK_SHIFT) & 0x8000) != 0
-                || (Native.GetAsyncKeyState(Native.VK_LWIN) & 0x8000) != 0
-                || (Native.GetAsyncKeyState(Native.VK_RWIN) & 0x8000) != 0;
-        }
-
-        private IntPtr HookCallback(int nCode, IntPtr wParam, IntPtr lParam)
-        {
-            if (nCode >= 0 && Config.GrabF1F2)
-            {
-                Native.KBDLLHOOKSTRUCT k = (Native.KBDLLHOOKSTRUCT)
-                    Marshal.PtrToStructure(lParam, typeof(Native.KBDLLHOOKSTRUCT));
-
-                // Bare F1/F2 only - Alt+F1, Ctrl+F2 and friends stay untouched.
-                if ((k.vkCode == Native.VK_F1 || k.vkCode == Native.VK_F2) && !ModifierHeld())
-                {
-                    int msg = wParam.ToInt32();
-                    if (msg == Native.WM_KEYDOWN || msg == Native.WM_SYSKEYDOWN)
-                    {
-                        int delta = (k.vkCode == Native.VK_F2) ? Config.Step : -Config.Step;
-                        // This callback sits on the input path: hand the slow
-                        // DDC/CI round-trip to the UI thread and return at once,
-                        // otherwise every keystroke on the machine stalls.
-                        try { _marshal.BeginInvoke(new Action<int>(Nudge), delta); }
-                        catch { }
-                    }
-                    if (msg == Native.WM_KEYDOWN || msg == Native.WM_SYSKEYDOWN
-                        || msg == Native.WM_KEYUP || msg == Native.WM_SYSKEYUP)
-                    {
-                        return new IntPtr(1); // swallow it, so Boot Camp never sees it
-                    }
-                }
-            }
-            return Native.CallNextHookEx(IntPtr.Zero, nCode, wParam, lParam);
-        }
-
         private int ReadCurrentOrRecover() { return _current; }
 
         private void Nudge(int delta)
@@ -507,7 +443,7 @@ namespace BrightnessCtl
                     "  " + Config.KeyMin + "  - 0%" + Environment.NewLine +
                     "  F1 / F2  - dimmer / brighter" +
                         (Config.GrabF1F2 ? "" : "  (off)") + Environment.NewLine + Environment.NewLine +
-                    "Key hook active:  " + (_hook != IntPtr.Zero ? "yes" : "no") + Environment.NewLine +
+                    "Key hook active:  " + (_keyboard != null && _keyboard.IsActive ? "yes" : "no") + Environment.NewLine +
                     "HID brightness keys: " + (_rawInputOk ? "listening" : "no") + Environment.NewLine +
                     "Settings file:" + Environment.NewLine + Config.IniPath,
                     "BrightnessCtl", MessageBoxButtons.OK, MessageBoxIcon.Information);
@@ -533,7 +469,7 @@ namespace BrightnessCtl
             {
                 Config.GrabF1F2 = !Config.GrabF1F2;
                 grab.Checked = Config.GrabF1F2;
-                if (Config.GrabF1F2) InstallHook(); else RemoveHook();
+                _keyboard.SetEnabled(Config.GrabF1F2);
             };
             menu.Items.Add(grab);
 
@@ -564,12 +500,11 @@ namespace BrightnessCtl
             SystemEvents.PowerModeChanged -= OnPowerModeChanged;
             _dimmer.Dispose();
             _osd.Dispose();
-            _hookKeeper.Stop();
             _coalesce.Stop();
             _trayRetry.Stop();
             _ddcRetry.Stop();
             Log.Write("exit: user requested");
-            RemoveHook();
+            _keyboard.Dispose();
             UnregisterAll();
             if (_marshal != null) _marshal.Dispose();
             _tray.Visible = false;

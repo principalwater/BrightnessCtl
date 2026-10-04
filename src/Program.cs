@@ -1,4 +1,4 @@
-﻿// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT
 // Copyright (c) 2026 principalwater
 using System;
 using System.Collections.Generic;
@@ -155,7 +155,7 @@ namespace BrightnessCtl
             IntPtr window = Native.FindWindow(null, Native.ControlWindow);
             if (window == IntPtr.Zero && (setting || command == 3))
             {
-                System.Diagnostics.Process.Start(Application.ExecutablePath);
+                Startup.StartResident();
                 for (int i = 0; i < 150 && window == IntPtr.Zero; i++)
                 {
                     Thread.Sleep(100);

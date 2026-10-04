@@ -69,6 +69,9 @@ saved target never falls back to another monitor. Older local configurations usi
 `Ctrl+Alt+Up/Down` changes brightness by 5 percentage points by default.
 `Ctrl+Alt+PageUp/PageDown` selects 100%/0%. Tray presets and an OSD are available.
 Bare F1/F2 interception is **off by default**; enable `grabF1F2=1` if desired.
+The keyboard hook has a dedicated message thread, so slow display calls and modal
+UI do not remove it through Windows' low-level-hook timeout. Installed CLI launches
+use the matching scheduled task to keep the resident outside short-lived shell jobs.
 The legacy HID consumer decoder supports a specific three-byte report layout;
 other keyboards can use configurable Windows hotkeys.
 
@@ -103,6 +106,8 @@ installer and public documentation/licenses.
 `src/` separates AMD interop, software gain/recovery, hardware DDC, configuration,
 input, tray UI and startup. `scripts/test.ps1` runs tests without modifying a display.
 The GitHub Actions workflow builds and runs these tests on Windows.
+On an interactive desktop, `scripts/test-input.ps1` checks that captured F1 events
+survive a deliberately blocked UI thread. It does not change monitor brightness.
 
 MIT licensed; see [LICENSE](LICENSE). BetterDisplay and MonitorControl were conceptual
 references, not copied applications. AMD interop declarations retain AMD's MIT notice.

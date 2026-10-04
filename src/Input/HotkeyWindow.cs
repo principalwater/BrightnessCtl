@@ -20,6 +20,7 @@ namespace BrightnessCtl
         public event Action<int> Pressed;
         public event Action<IntPtr> RawInput;
         public event Action TaskbarCreated;
+        public event Action<int> KeyStep;
         public Func<int, int, int> BrightnessCommand;
 
         private readonly uint _taskbarCreatedMsg;
@@ -34,6 +35,11 @@ namespace BrightnessCtl
 
         protected override void WndProc(ref Message m)
         {
+            if (m.Msg == Native.WM_KEYSTEP && KeyStep != null)
+            {
+                KeyStep(m.WParam.ToInt32());
+                return;
+            }
             if (m.Msg == Native.WM_BRIGHTNESS && BrightnessCommand != null)
             {
                 m.Result = new IntPtr(BrightnessCommand(m.WParam.ToInt32(), m.LParam.ToInt32()));

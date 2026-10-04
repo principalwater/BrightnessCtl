@@ -56,6 +56,39 @@ namespace BrightnessCtl
 
         public const string ControlWindow = "BrightnessCtl.Software.v2";
         public const int WM_BRIGHTNESS = 0x8001;
+        public const uint WM_KEYSTEP = 0x8002;
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct POINT { public int X, Y; }
+        [StructLayout(LayoutKind.Sequential)]
+        public struct MSG
+        {
+            public IntPtr Window;
+            public uint Message;
+            public UIntPtr WParam;
+            public IntPtr LParam;
+            public uint Time;
+            public POINT Position;
+            public uint Private;
+        }
+        [DllImport("kernel32.dll")]
+        public static extern uint GetCurrentThreadId();
+        [DllImport("user32.dll", SetLastError = true)]
+        public static extern bool PostThreadMessage(uint thread, uint message, IntPtr wParam, IntPtr lParam);
+        [DllImport("user32.dll", SetLastError = true)]
+        public static extern bool PostMessage(IntPtr window, uint message, IntPtr wParam, IntPtr lParam);
+        [DllImport("user32.dll", SetLastError = true)]
+        public static extern int GetMessage(out MSG message, IntPtr window, uint minimum, uint maximum);
+        [DllImport("user32.dll")]
+        public static extern bool PeekMessage(out MSG message, IntPtr window, uint minimum, uint maximum, uint remove);
+        [DllImport("user32.dll")]
+        public static extern bool TranslateMessage(ref MSG message);
+        [DllImport("user32.dll")]
+        public static extern IntPtr DispatchMessage(ref MSG message);
+        [DllImport("user32.dll", SetLastError = true)]
+        public static extern UIntPtr SetTimer(IntPtr window, UIntPtr id, uint interval, IntPtr callback);
+        [DllImport("user32.dll")]
+        public static extern bool KillTimer(IntPtr window, UIntPtr id);
 
         [DllImport("user32.dll", CharSet = CharSet.Unicode)]
         public static extern IntPtr FindWindow(string className, string windowName);
