@@ -21,6 +21,13 @@ config.ini
 software.txt
 last.txt
 output-color-lease.txt*
+scanout-lease.json*
+display-status.json*
+startup-task.txt
 .env*
 *.pem
 *.pfx
+
+# Swift build caches
+.build/
+.swiftpm/

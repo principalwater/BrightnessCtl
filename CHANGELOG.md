@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.5.0 — 2026-10-05
+
+- Rewrite all application behavior in Swift 6.4: Win32 tray/OSD, dedicated keyboard
+  thread, native HID parser, persistence and watchdog recovery.
+- Discover GPU-independent Windows display paths; prefer native WDDM scanout gamma
+  and retain AMD RGB gain as a fallback. Exclude virtual, cloned and HDR outputs.
+- Preserve stable selection and pending calibration recovery. Restore through the
+  existing owner before rescan/shutdown, and retry temporarily unavailable drivers.
+- Use native Task Scheduler COM, executable validation and per-user startup tasks.
+- Bundle required Swift runtimes and licenses; omit developer debug information.
+- Preserve current brightness, 5% steps and selected-monitor DDC maximum.
+
 ## 0.1.1
 
 - Run the F1/F2 keyboard hook on a dedicated message thread, keeping it responsive
@@ -20,6 +32,3 @@ First public release; numbering starts at 0.1 for the public project.
 - Opt-in F1/F2 interception; no baked-in monitor model or Windows user paths.
 - Modular source, repeatable build/package scripts, hardware-independent tests and CI.
 - MIT license and provenance/third-party notices.
-
-The legacy launch/input lifecycle is being investigated after a resident process
-disappeared without a normal shutdown entry. A follow-up fix is planned as 0.1.1.

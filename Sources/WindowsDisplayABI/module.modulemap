@@ -1,0 +1,7 @@
+// SPDX-License-Identifier: MIT
+module WindowsDisplayABI [system] {
+    header "WindowsDisplayABI.h"
+    link "gdi32"
+    link "dxva2"
+    export *
+}

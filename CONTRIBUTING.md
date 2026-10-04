@@ -1,7 +1,9 @@
 # Contributing
 
 Build with `scripts/build.ps1` and run `scripts/test.ps1` before proposing changes.
-Keep native AMD calls on the resident controller's thread. Never add a global dimming
+Use Swift 6.4 and the official Microsoft SDK; format with `swift-format` and the
+checked-in configuration. Keep driver calls on the display actor's dedicated
+executor and input callbacks on their own message thread. Never add a global dimming
 fallback for unsupported GPUs: virtual streaming outputs must remain unmodified.
 Hardware tests should verify 0%, 100%, restoration on exit/crash, reconnection,
 multi-monitor targeting and keyboard input. Report GPU model, driver version and

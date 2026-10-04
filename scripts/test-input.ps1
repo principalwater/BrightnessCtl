@@ -1,10 +1,10 @@
+[CmdletBinding()]
+param([string]$Executable)
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path $PSScriptRoot -Parent
-$compilerPath = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
-$sourceFiles = @(Get-ChildItem -LiteralPath (Join-Path $repoRoot 'src') -Recurse -Filter '*.cs' | ForEach-Object FullName)
-$testPath = Join-Path $repoRoot 'artifacts\InputTests.exe'
-New-Item -ItemType Directory -Path (Split-Path $testPath -Parent) -Force | Out-Null
-& $compilerPath /nologo /target:exe /main:BrightnessCtl.InputTests /platform:x64 /optimize+ /debug- /reference:System.Windows.Forms.dll /reference:System.Drawing.dll "/out:$testPath" @sourceFiles (Join-Path $repoRoot 'tests\InputTests.cs')
-if ($LASTEXITCODE -ne 0) { throw 'Input regression check did not compile.' }
-& $testPath
-if ($LASTEXITCODE -ne 0) { throw 'Input regression check failed.' }
+$testPath = if ($Executable) { (Resolve-Path -LiteralPath $Executable).Path } else { Join-Path $repoRoot 'artifacts\BrightnessCtl.exe' }
+if (-not (Test-Path -LiteralPath $testPath)) { throw 'Run scripts/build.ps1 first.' }
+# Three injected F2 taps are consumed by the test hook; no display is modified.
+$test = Start-Process -FilePath $testPath -ArgumentList '--test-input' -Wait -PassThru -NoNewWindow
+if ($test.ExitCode -ne 0) { throw 'Native Swift keyboard regression failed.' }
+Write-Host 'PASS: keyboard input survives a 2.4-second UI stall.'

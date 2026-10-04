@@ -1,32 +1,41 @@
 # BrightnessCtl
 
-A small Windows tray utility for **software brightness on one physical AMD display**.
-It scales that display's RGB output through the AMD driver, while keeping the
-selected monitor's DDC/CI backlight at 100%. Other displays and virtual streaming
-outputs are not selected. No desktop-wide filter or dimming overlay is used.
+A Windows tray utility written in **Swift 6.4**, for software brightness on one
+physical monitor. It scales the selected display's scanout gamma through native
+Windows WDDM APIs and keeps its DDC/CI backlight at maximum. AMD ADL RGB gain is
+available when the native driver path cannot be opened.
+
+Version **0.5.0** introduces the Swift implementation. Releases 0.1 and 0.1.1
+retain their original C# implementation in their tags and release archives.
 
 ## Compatibility
 
-- 64-bit Windows 10/11 and .NET Framework 4.x.
-- An installed AMD display driver exposing `atiadlxx.dll` and ADL color controls.
-- Tested on AMD FirePro D700 with an SDR external display and Sunshine/Moonlight.
-- Other AMD hardware/driver combinations need testing. NVIDIA, Intel, DisplayLink,
-  HDR brightness upscaling and monitor groups are not implemented in this release.
-- DDC/CI must be enabled in the monitor menu for backlight enforcement. Software
-  dimming may still work when DDC is unavailable; `info` reports this explicitly.
+- Windows 10/11 x64; one independent physical SDR display.
+- Discovery uses Windows display paths and WDDM adapter types for all GPU vendors.
+  Virtual/indirect displays, cloned sources and HDR are excluded.
+- Native gamma was physically tested on AMD FirePro D700. Intel/NVIDIA use the same
+  Windows API but have not yet been tested on hardware. Drivers can reject gamma
+  control or ownership, particularly when a fullscreen app owns the output.
+- Microsoft Visual C++ 2015–2022 x64 Redistributable is required. Release packages
+  include Swift runtime libraries; the compiler is not required.
+- Enable DDC/CI in the monitor menu to enforce maximum backlight. Software control
+  can work without DDC; `info` reports when maximum backlight is unconfirmed.
 
-This is an early release. The configured percentage is a software gain setting,
-not a calibrated measurement in nits. AMD control quantization can affect very low
-levels. Color-critical or HDR workflows should test compatibility first.
+Percentages represent software gain, not calibrated nits. Night Light, calibration
+loaders, exclusive fullscreen apps and capture drivers can compete for output
+controls. Check those workflows on your hardware.
 
-## Download and install
+## Install and build
 
-Get the `win-x64.zip` from [Releases](https://github.com/principalwater/BrightnessCtl/releases),
-extract it, and run `install.ps1` using PowerShell. Administrator rights are not required.
-The installer copies the executable to `%LOCALAPPDATA%\BrightnessCtl`, preserves
-existing settings and registers sign-in startup. The executable is unsigned.
+Extract the complete `win-x64.zip` from
+[Releases](https://github.com/principalwater/BrightnessCtl/releases) and run
+`install.ps1` in PowerShell. It preserves settings and brightness, installs into
+`%LOCALAPPDATA%\BrightnessCtl`, and registers interactive sign-in startup.
+Administrator rights are not needed. The executable is unsigned.
 
-For a source checkout:
+For a source checkout, install the official
+[Swift Windows toolchain](https://www.swift.org/install/windows/), MSVC x64 Build
+Tools and Windows SDK, then run:
 
 ```powershell
 ./scripts/build.ps1
@@ -34,81 +43,70 @@ For a source checkout:
 ./scripts/install.ps1
 ```
 
-The build uses the compiler supplied with Windows .NET Framework. No third-party
-NuGet packages or redistributed GPU SDK/driver binaries are required.
+## Select a monitor and brightness
 
-## Pick a display
-
-With one connected AMD physical display, the first start selects and saves it.
-With multiple displays, select a physical output explicitly before starting:
+The first start selects a unique eligible physical display. If there are several,
+choose an ID explicitly. Moving to a different connector can require reselection.
+A disconnected saved target never falls back to another monitor. AMD 0.1.x settings
+are migrated only when the original target can be identified.
 
 ```powershell
 ./BrightnessCtl.exe list
-./BrightnessCtl.exe select '<output-id-from-list>'
-./BrightnessCtl.exe
-```
-
-Run `exit` before changing the target. The identifier contains the GPU connector
-and panel name; it does not follow whichever display becomes primary. Reconnecting
-on a different connector requires selecting that output again. A disconnected
-saved target never falls back to another monitor. Older local configurations using
-`targetMonitor`/`targetMonitorId` are migrated when a unique matching output is found.
-
-## Brightness and shortcuts
-
-```powershell
-./BrightnessCtl.exe get
+./BrightnessCtl.exe select '<id-from-list>'
 ./BrightnessCtl.exe 75
 ./BrightnessCtl.exe +5
 ./BrightnessCtl.exe -5
+./BrightnessCtl.exe get
 ./BrightnessCtl.exe info
 ./BrightnessCtl.exe rescan
 ./BrightnessCtl.exe exit
 ```
 
-`Ctrl+Alt+Up/Down` changes brightness by 5 percentage points by default.
-`Ctrl+Alt+PageUp/PageDown` selects 100%/0%. Tray presets and an OSD are available.
-Bare F1/F2 interception is **off by default**; enable `grabF1F2=1` if desired.
-The keyboard hook has a dedicated message thread, so slow display calls and modal
-UI do not remove it through Windows' low-level-hook timeout. Installed CLI launches
-use the matching scheduled task to keep the resident outside short-lived shell jobs.
-The legacy HID consumer decoder supports a specific three-byte report layout;
-other keyboards can use configurable Windows hotkeys.
+`Ctrl+Alt+Up/Down` changes brightness by 5 percentage points;
+`Ctrl+Alt+PageUp/PageDown` selects 100%/0%. The tray has presets and an OSD.
+Bare F1/F2 interception and HID consumer brightness keys are opt-in via `grabF1F2=1`.
+The hook has a dedicated thread. HID reports use Windows' HID parser.
 
-Settings live in `%LOCALAPPDATA%\BrightnessCtl\config.ini`. Restart after editing.
-Use `step`, `up`, `down`, `max`, `min`, `restoreOnResume`, `grabF1F2`, and `targetOutput`.
-Leave a hotkey value empty to disable it. The monitor's physical backlight stays at
-maximum after exit, while the original AMD color controls are restored.
+Edit `%LOCALAPPDATA%\BrightnessCtl\config.ini` and restart for input changes.
+Options: `step`, `up`, `down`, `max`, `min`, `grabF1F2`, `interceptInjectedKeys`,
+`restoreOnResume`, `backend=auto|native|amd`, `targetDisplay`. Empty hotkeys disable
+bindings. Injected F1/F2 are ignored unless `interceptInjectedKeys=1`. `rescan`
+reloads display/backend settings and preserves the current brightness.
 
-## Recovery and streaming
+## Recovery and capture
 
-The original output color controls are recorded atomically before dimming. A hidden
-`--watchdog` helper restores them after an unexpected resident exit. Two processes
-are therefore normal: the tray and recovery helper. If both are forcibly terminated,
-the next start uses the saved original controls rather than multiplying dimming.
+Original calibration is stored atomically before dimming. A hidden watchdog
+restores it if the tray exits unexpectedly; two processes are normal. Exit restores
+output colors while physical backlight stays at maximum. Pending recovery for an
+unavailable monitor is retained and cannot be overwritten by selecting another.
+If both processes are killed, the next start recovers the available output.
 
-On the tested SDR setup, Sunshine/Moonlight captures retained their normal brightness,
-and Windows shell UI dimmed uniformly on the physical panel. Capture pipelines and
-drivers vary; check your own setup. No global Magnification matrix, color profile
-assignment or GDI gamma ramp is changed by this implementation.
+The app controls scanout below desktop composition, with no desktop overlay,
+global Magnification matrix or color-profile assignment. Native ownership permits
+output duplication. Independent DXGI captures of a white surface retained identical
+RGB values at 100%, 45% and 10% on the tested driver. A persistent duplication session
+continued delivering changing frames through brightness switches. A complete
+Sunshine/Moonlight session still needs checking with the native backend; the AMD
+backend was tested with Sunshine/Moonlight.
 
-## Privacy
+## Development, privacy and license
 
-The app has no telemetry, network client, account integration or automatic updates.
-Runtime settings, color-recovery state and `startup.log` remain on the local machine.
-Logs/diagnostics may contain local display IDs and file locations; review them before
-posting an issue. These files, old local backups, binaries and build output are ignored
-by Git and are not part of the repository. Release packages contain only the executable,
-installer and public documentation/licenses.
+All application implementation is Swift. Header-only Clang modules declare native
+Windows/AMD ABI; there is no C/C++ helper or C# runtime dependency.
+`Sources/BrightnessCore` contains portable gain/selection logic;
+`Sources/BrightnessCtl` owns Win32 UI, input, WDDM/DDC/AMD, recovery and native
+Task Scheduler COM startup. See [Windows interop notes](docs/WindowsInterop.md).
 
-## Development and license
+Swift Testing runs without modifying a monitor. On an interactive desktop,
+`scripts/test-input.ps1` injects three F2 taps into its own hook and checks a
+2.4-second UI stall without changing brightness. The core also supports
+`swift test` with Swift 6.4 on macOS 26 or later.
 
-`src/` separates AMD interop, software gain/recovery, hardware DDC, configuration,
-input, tray UI and startup. `scripts/test.ps1` runs tests without modifying a display.
-The GitHub Actions workflow builds and runs these tests on Windows.
-On an interactive desktop, `scripts/test-input.ps1` checks that captured F1 events
-survive a deliberately blocked UI thread. It does not change monitor brightness.
+There is no telemetry, networking, account integration or updater. Local settings,
+recovery files, status and logs are excluded from Git and packages. Review logs
+before sharing: IDs and error messages can identify devices or local paths.
+Release builds omit debug information that could contain developer source paths.
 
-MIT licensed; see [LICENSE](LICENSE). BetterDisplay and MonitorControl were conceptual
-references, not copied applications. AMD interop declarations retain AMD's MIT notice.
-Details and full notices are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+MIT licensed. BetterDisplay and MonitorControl were conceptual references; their
+application code was not copied. AMD declarations and bundled Swift runtimes retain
+their licenses. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and [Licenses](Licenses).

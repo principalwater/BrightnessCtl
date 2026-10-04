@@ -9,9 +9,39 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Install Swift 6.4
+        uses: compnerd/gha-setup-swift@bbae8ce86bac5a3449f3992b3d88bc4ca25f2057
+        with:
+          swift-version: swift-6.4.0-release
+          swift-build: 6.4.0-RELEASE
       - name: Build x64
         shell: powershell
         run: ./scripts/build.ps1
       - name: Run hardware-independent tests
         shell: powershell
         run: ./scripts/test.ps1
+      - name: Check native ABI
+        shell: pwsh
+        run: |
+          $process = Start-Process ./artifacts/BrightnessCtl.exe -ArgumentList '--abi-check' -Wait -PassThru -NoNewWindow
+          if ($process.ExitCode -ne 0) { throw 'ABI check failed' }
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: BrightnessCtl-win-x64
+          path: |
+            artifacts/BrightnessCtl.exe
+            artifacts/*.dll
+            artifacts/runtime-files.txt
+            Licenses/
+            LICENSE
+            THIRD_PARTY_NOTICES.md
+  macos-core:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - uses: compnerd/gha-setup-swift@bbae8ce86bac5a3449f3992b3d88bc4ca25f2057
+        with:
+          swift-version: swift-6.4.0-release
+          swift-build: 6.4.0-RELEASE
+      - run: swift test

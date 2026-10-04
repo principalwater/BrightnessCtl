@@ -1,5 +1,7 @@
 * text=auto
-*.cs text eol=crlf
+*.swift text eol=lf
+*.h text eol=lf
+*.modulemap text eol=lf
 *.ps1 text eol=crlf
 *.md text eol=lf
 *.yml text eol=lf

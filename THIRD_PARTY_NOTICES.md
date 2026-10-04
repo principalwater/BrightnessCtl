@@ -3,7 +3,8 @@
 ## AMD Display Library interop
 
 The native function signatures, struct layouts and constants in
-`src/Backends/AmdOutput.cs` are adapted from AMD's public ADL SDK headers:
+`Sources/WindowsDisplayABI/AMDABI.h` and `Sources/BrightnessCtl/AMDColor.swift`
+are adapted from AMD's public ADL SDK headers:
 [adl_sdk.h](https://github.com/GPUOpen-LibrariesAndSDKs/display-library/blob/master/include/adl_sdk.h),
 [adl_structures.h](https://github.com/GPUOpen-LibrariesAndSDKs/display-library/blob/master/include/adl_structures.h).
 Those headers carry the following MIT notice. No AMD driver DLL, SDK binary,
@@ -72,7 +73,28 @@ its code or assets is included here. Reading that branch does not license the
 current proprietary application. BrightnessCtl does not claim to be an exact
 port, fork, or endorsed version of either project.
 
-## Windows and .NET
+## Swift runtime libraries
+
+Packages include unmodified runtime DLLs from the official Swift 6.4.0 installer.
+Swift, Foundation, Foundation Essentials/Internationalization, Dispatch and the
+Blocks runtime are provided under Apache 2.0 with the Swift runtime exception.
+Full license texts from the `swift-6.4.0-RELEASE` source tag are retained in
+`Licenses/Swift.txt`, `Foundation.txt`, `SwiftFoundation.txt`, `Dispatch.txt` and
+`FoundationICU.txt`. Foundation's additional notices are in
+`Licenses/SwiftFoundation-NOTICE.txt`. Foundation ICU incorporates ICU 76.1;
+its Unicode and third-party notices are retained in `Licenses/ICU.txt`.
+The application's MIT license does not replace those runtime licenses.
+
+Sources: [Swift](https://github.com/swiftlang/swift/tree/swift-6.4.0-RELEASE),
+[Foundation](https://github.com/swiftlang/swift-corelibs-foundation/tree/swift-6.4.0-RELEASE),
+[Swift Foundation](https://github.com/swiftlang/swift-foundation/tree/swift-6.4.0-RELEASE),
+[Dispatch](https://github.com/swiftlang/swift-corelibs-libdispatch/tree/swift-6.4.0-RELEASE),
+[Foundation ICU](https://github.com/swiftlang/swift-foundation-icu/tree/swift-6.4.0-RELEASE),
+[ICU](https://github.com/unicode-org/icu/tree/release-76-1).
+
+## Windows system dependencies
 
 Win32 interop declarations were written against Microsoft's public API documentation.
-Windows and .NET Framework are system dependencies; their binaries are not bundled.
+Windows SDK layouts are imported at build time. Windows and the Microsoft Visual
+C++ x64 Redistributable are system prerequisites; their binaries are not bundled.
+There is no .NET dependency in the Swift application.
