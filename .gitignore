@@ -1,0 +1,26 @@
+# Local legacy files, intentionally kept outside the public history
+/BrightnessCtl.cs
+/BrightnessCtl.exe
+/installbrightnessctl.ps1
+/backup-*/
+
+# Builds, runtime state, diagnostics and credentials
+artifacts/
+bin/
+obj/
+.vs/
+*.exe
+*.dll
+*.pdb
+*.zip
+*.log
+*.dmp
+*.user
+*.suo
+config.ini
+software.txt
+last.txt
+output-color-lease.txt*
+.env*
+*.pem
+*.pfx

@@ -1,0 +1,17 @@
+name: Build and test
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build x64
+        shell: powershell
+        run: ./scripts/build.ps1
+      - name: Run hardware-independent tests
+        shell: powershell
+        run: ./scripts/test.ps1
