@@ -12,7 +12,14 @@ Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'install.ps1') -Destination $pac
 Copy-Item -LiteralPath (Join-Path $repoRoot 'Licenses') -Destination $packageDirectory -Recurse
 Copy-Item -LiteralPath (Join-Path $repoRoot 'docs') -Destination $packageDirectory -Recurse
 $archivePath = "$packageDirectory.zip"
-Compress-Archive -Path (Join-Path $packageDirectory '*') -DestinationPath $archivePath -Force
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+# .NET 6+ has maximum ZIP compression; Windows PowerShell uses Optimal.
+$compression = [IO.Compression.CompressionLevel]::Optimal
+if ([Enum]::IsDefined([IO.Compression.CompressionLevel], 'SmallestSize')) {
+    $compression = [Enum]::Parse([IO.Compression.CompressionLevel], 'SmallestSize')
+}
+if (Test-Path -LiteralPath $archivePath) { Remove-Item -LiteralPath $archivePath }
+[IO.Compression.ZipFile]::CreateFromDirectory($packageDirectory, $archivePath, $compression, $false)
 $size = (Get-Item -LiteralPath $archivePath).Length
 if ($size -gt 3000000) { throw "Archive exceeds the 3 MB size budget: $size bytes." }
 $digest = (Get-FileHash -LiteralPath $archivePath -Algorithm SHA256).Hash.ToLowerInvariant()
