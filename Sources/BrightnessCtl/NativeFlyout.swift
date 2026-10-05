@@ -58,7 +58,13 @@ enum NativeFlyout {
         let kind = GetWindowRgn(window, region)
         DeleteObject(region)
         if property(ownerProperty, on: window) == UInt64(owner), property(startedProperty, on: window) == started {
-            return kind == Int32(NULLREGION)
+            if kind == Int32(NULLREGION) { return true }
+            // Shell layout updates can clear the region without clearing our
+            // ownership properties. Reapply only the original unshaped state.
+            guard kind == 0, let empty = CreateRectRgn(0, 0, 0, 0) else { return false }
+            if SetWindowRgn(window, empty, true) != 0 { return true }
+            DeleteObject(empty)
+            return false
         }
         // ponytail: support the Shell's default unshaped host; retain the hide
         // fallback for shaped windows rather than serialize arbitrary regions.

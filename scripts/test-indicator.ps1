@@ -15,6 +15,7 @@ public static class BrightnessIndicatorCheck {
     [DllImport("user32.dll")] public static extern IntPtr GetShellWindow();
     [DllImport("user32.dll")] public static extern bool GetWindowBand(IntPtr window, out uint band);
     [DllImport("user32.dll")] public static extern int GetWindowRgn(IntPtr window, IntPtr region);
+    [DllImport("user32.dll")] public static extern int SetWindowRgn(IntPtr window, IntPtr region, bool redraw);
     [DllImport("gdi32.dll")] public static extern IntPtr CreateRectRgn(int left, int top, int right, int bottom);
     [DllImport("gdi32.dll")] public static extern bool DeleteObject(IntPtr region);
     [DllImport("kernel32.dll")] public static extern IntPtr OpenThread(uint access, bool inherit, uint id);
@@ -112,6 +113,9 @@ try {
     [void](Invoke-BrightnessCLI @('osd', 'custom'))
     Start-Sleep -Milliseconds 30
     Assert-Indicator ((Get-NativeRegion) -eq 1) 'Native window was not pre-clipped before the first show.'
+    Assert-Indicator ([BrightnessIndicatorCheck]::SetWindowRgn($native, [IntPtr]::Zero, $true) -ne 0) 'Could not simulate a native layout reset.'
+    Send-IndicatorTrigger 55
+    Assert-Indicator ((Get-NativeRegion) -eq 1) 'A native layout reset permanently removed pre-show clipping.'
     Assert-Indicator ($osd -ne [IntPtr]::Zero) 'The custom OSD window is unavailable.'
     $positionSamples = [BrightnessIndicatorCheck]::CheckOSDPosition($control, $osd)
     Assert-Indicator ($positionSamples -gt 0) 'No visible OSD position samples were collected.'
