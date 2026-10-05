@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-import FoundationEssentials
+import Foundation
 import Testing
 
 @testable import BrightnessCore
