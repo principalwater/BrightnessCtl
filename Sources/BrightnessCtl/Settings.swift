@@ -18,7 +18,7 @@ struct Settings: Sendable {
     init() throws {
         try NativeFiles.createDirectory(NativeFiles.directory())
         let configuration = try NativeFiles.path("config.ini")
-        if !NativeFiles.exists(configuration) {
+        if try !NativeFiles.exists(configuration) {
             let defaults = [
                 "# BrightnessCtl: one physical SDR display. Use CLI list/select.",
                 "step=5",
@@ -38,7 +38,7 @@ struct Settings: Sendable {
         }
         let brightnessFile = try NativeFiles.path("software.txt")
         let saved =
-            NativeFiles.exists(brightnessFile)
+            try NativeFiles.exists(brightnessFile)
             ? try NativeFiles.text(brightnessFile) : ""
         brightness = try BrightnessLevel(
             max(0, min(100, Int(saved.trimmingWhitespace()) ?? 100)))

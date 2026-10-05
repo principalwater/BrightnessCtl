@@ -5,6 +5,7 @@ import WinSDK
 /// Exercises native file operations in a newly created temporary directory.
 /// No display controller, user settings or recovery lease is constructed.
 func testStorage() throws {
+    try testRecoveryStateMapping()
     var buffer = Array(repeating: WCHAR(0), count: 32768)
     let length = GetTempPathW(DWORD(buffer.count), &buffer)
     guard length > 0, length < buffer.count else { throw WindowsError.api("Get temp path", GetLastError()) }
@@ -16,6 +17,7 @@ func testStorage() throws {
     }
     defer { _ = withWideString(directory) { RemoveDirectoryW($0) } }
     let path = directory + "\\state-🍎.json"
+    guard try NativeFiles.exists(path) == false else { throw WindowsError.unsupported("Test file already exists.") }
     defer { try? NativeFiles.remove(path) }
     let original = Array("α🍎\r\n".utf8)
     try NativeFiles.write(original, to: path)

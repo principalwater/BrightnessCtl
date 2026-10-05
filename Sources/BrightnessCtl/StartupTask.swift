@@ -41,7 +41,7 @@ private func normalizedPath(_ path: String) throws(WindowsError) -> String {
 func startResident() throws {
     let taskFile = try NativeFiles.path("startup-task.txt")
     let taskName =
-        NativeFiles.exists(taskFile)
+        try NativeFiles.exists(taskFile)
         ? try NativeFiles.text(taskFile).trimmingWhitespace()
         : "BrightnessCtl"
     guard isValidStartupTaskName(taskName) else {

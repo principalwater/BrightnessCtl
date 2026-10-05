@@ -45,8 +45,12 @@ struct ColorLease: Sendable, Equatable {
 
     static func read() throws -> Self? {
         let path = try NativeFiles.path("scanout-lease.json")
-        guard NativeFiles.exists(path) else { return nil }
-        let fields = try StateJSON.decode(NativeFiles.read(path))
+        guard try NativeFiles.exists(path) else { return nil }
+        return try decode(NativeFiles.read(path))
+    }
+
+    static func decode(_ bytes: [UInt8]) throws -> Self {
+        let fields = try StateJSON.decode(bytes)
         guard fields["version"]?.integer == 1, let owner = fields["owner"]?.unsigned.flatMap(UInt32.init(exactly:)),
             let started = fields["started"]?.unsigned, let id = fields["displayID"]?.string,
             let backend = fields["backend"]?.string
@@ -65,7 +69,10 @@ struct ColorLease: Sendable, Equatable {
         }
         return lease
     }
-    func write() throws {
+    func encoded() throws -> [UInt8] {
+        guard version == 1, displayID.count < 4096, ["amd", "native"].contains(backend) else {
+            throw WindowsError.unsupported("Unsupported output recovery state.")
+        }
         var fields: [String: StateField] = [
             "version": .unsigned(UInt64(version)), "owner": .unsigned(UInt64(owner)),
             "started": .unsigned(started), "displayID": .string(displayID), "backend": .string(backend),
@@ -74,8 +81,11 @@ struct ColorLease: Sendable, Equatable {
         if let brightness { fields["brightness"] = .signed(Int64(brightness)) }
         if let contrast { fields["contrast"] = .signed(Int64(contrast)) }
         if let gamma { fields["gamma"] = .words(gamma) }
-        try NativeFiles.write(StateJSON.encode(fields), to: NativeFiles.path("scanout-lease.json"))
+        let bytes = StateJSON.encode(fields)
+        guard bytes.count < 32768 else { throw WindowsError.unsupported("Invalid recovery-state size.") }
+        return bytes
     }
+    func write() throws { try NativeFiles.write(encoded(), to: NativeFiles.path("scanout-lease.json")) }
     static func remove() throws { try NativeFiles.remove(NativeFiles.path("scanout-lease.json")) }
 }
 /// Called under the instance mutex before a new backend captures its baseline.
@@ -108,7 +118,7 @@ func recoverOutput(owner: UInt32? = nil, started: UInt64? = nil) throws -> Bool 
     }
     // Preserve the baseline when migrating from the public 0.1.x versions.
     let legacy = try NativeFiles.path("output-color-lease.txt")
-    guard NativeFiles.exists(legacy) else { return true }
+    guard try NativeFiles.exists(legacy) else { return true }
     let lines = try NativeFiles.text(legacy).split(whereSeparator: \.isNewline).map(String.init)
     guard lines.count == 7, let brightness = Int(lines[3]), let contrast = Int(lines[4]) else {
         throw WindowsError.unsupported("Invalid legacy recovery state.")

@@ -51,6 +51,8 @@ final class KeyboardInput: @unchecked Sendable {
     private struct Status {
         var threadID: DWORD = 0
         var active = false
+        var stopped = false
+        var error: DWORD = 0
     }
     private let status = Mutex(Status())
     private let finished: OwnedHandle
@@ -68,31 +70,46 @@ final class KeyboardInput: @unchecked Sendable {
         finished = try OwnedHandle(CreateEventW(nil, true, false, nil))
         thread = try NativeThread(name: "BrightnessCtl keyboard input") { [weak self] in self?.run() }
         guard WaitForSingleObject(ready.raw, 5000) == DWORD(WAIT_OBJECT_0) else {
+            stop()
             throw WindowsError.unsupported("Keyboard thread did not start.")
         }
         if enabled && !active {
             stop()
-            throw WindowsError.api("SetWindowsHookEx", GetLastError())
+            throw WindowsError.api("SetWindowsHookEx", status.withLock { $0.error })
         }
     }
 
     var active: Bool { status.withLock { $0.active } }
 
     private func run() {
-        status.withLock { $0.threadID = GetCurrentThreadId() }
         var message = MSG()
         PeekMessageW(&message, nil, 0, 0, UINT(PM_NOREMOVE))
+        defer {
+            status.withLock {
+                $0.threadID = 0
+                $0.active = false
+            }
+            SetEvent(finished.raw)
+        }
+        guard
+            status.withLock({ state in
+                guard !state.stopped else { return false }
+                state.threadID = GetCurrentThreadId()
+                return true
+            })
+        else {
+            SetEvent(ready.raw)
+            return
+        }
         var context = InputState(destination: destination, allowInjected: allowInjected)
         withUnsafeMutablePointer(to: &context) { pointer in
             inputState = pointer
             defer {
                 if let hook = pointer.pointee.hook { UnhookWindowsHookEx(hook) }
                 inputState = nil
-                status.withLock { $0.active = false }
-                SetEvent(finished.raw)
             }
             func rearm() {
-                guard enabled else { return }
+                guard enabled, status.withLock({ !$0.stopped }) else { return }
                 if let replacement = SetWindowsHookExW(
                     Int32(WH_KEYBOARD_LL), keyboardCallback, GetModuleHandleW(nil), 0)
                 {
@@ -100,6 +117,9 @@ final class KeyboardInput: @unchecked Sendable {
                     pointer.pointee.hook = replacement
                     if let previous { UnhookWindowsHookEx(previous) }
                     status.withLock { $0.active = true }
+                } else {
+                    let error = GetLastError()
+                    status.withLock { $0.error = error }
                 }
             }
             rearm()
@@ -118,9 +138,16 @@ final class KeyboardInput: @unchecked Sendable {
     }
 
     func stop() {
-        let id = status.withLock { $0.threadID }
-        if id != 0 {
-            PostThreadMessageW(id, UINT(WM_QUIT), 0, 0)
+        let posted = status.withLock { state in
+            state.stopped = true
+            guard state.threadID != 0 else { return false }
+            // The worker clears its ID under this lock before exiting; it
+            // cannot be recycled by Windows while we post the quit message.
+            PostThreadMessageW(state.threadID, UINT(WM_QUIT), 0, 0)
+            state.threadID = 0
+            return true
+        }
+        if posted {
             WaitForSingleObject(finished.raw, 2000)
         }
     }

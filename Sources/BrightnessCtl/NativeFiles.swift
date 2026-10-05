@@ -24,8 +24,14 @@ enum NativeFiles {
     static func directory() throws -> String { try appData.get() + "\\BrightnessCtl" }
     static func path(_ name: String) throws -> String { try directory() + "\\" + name }
 
-    static func exists(_ path: String) -> Bool {
-        withWideString(path) { GetFileAttributesW($0) != DWORD(INVALID_FILE_ATTRIBUTES) }
+    static func exists(_ path: String) throws(WindowsError) -> Bool {
+        let (attributes, error) = withWideString(path) {
+            let attributes = GetFileAttributesW($0)
+            return (attributes, attributes == DWORD(INVALID_FILE_ATTRIBUTES) ? GetLastError() : 0)
+        }
+        if attributes != DWORD(INVALID_FILE_ATTRIBUTES) { return true }
+        if error == DWORD(ERROR_FILE_NOT_FOUND) || error == DWORD(ERROR_PATH_NOT_FOUND) { return false }
+        throw .api("Inspect local file", error)
     }
 
     static func createDirectory(_ path: String) throws(WindowsError) {
