@@ -154,6 +154,7 @@ do {
     let lock = try InstanceLock(timeout: 2000)
     if !lock.acquired { exit(0) }
     _ = SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT(bitPattern: -4))
+    NativeFlyout.restore()
     do { try recoverOutput() } catch { Diagnostics.write("recovery pending: \(error)") }
     let app = try TrayApplication(settings: Settings())
     defer { app.shutdown() }

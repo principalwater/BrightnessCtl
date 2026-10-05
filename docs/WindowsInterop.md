@@ -30,6 +30,29 @@ message threads. Hook callbacks have no allocation, I/O or driver calls. Mutexes
 protect shared completion state; unchecked Sendable declarations explain their
 ownership invariant.
 
+Shell flyout observation has its own Win32 message thread. Out-of-context WinEvent
+callbacks run on that thread and hide only recognized Shell brightness hosts
+synchronously, avoiding a tray queue hop and a second `ShowWindowAsync` delay.
+To prevent the first composed frame, recognized unshaped hosts are pre-clipped
+with an empty native window region. Brightness HID reports are parsed on this
+observer and arm suppression before posting steps to the tray. Media reports and
+Shell media triggers restore normal rendering; completion rearms suppression.
+The preference crosses threads through a mutex. System mode and shutdown restore
+the region. Window properties identify the owning PID and process creation time,
+allowing the existing watchdog and next startup to undo an interrupted change.
+Existing window shapes are preserved and retain the scoped hide fallback.
+The observer handles Explorer restarts independently of display-driver work.
+Internal Shell signatures remain optional; unrelated windows are never hidden.
+
+Run `scripts/test-indicator.ps1` in an interactive Windows session with the
+resident running and a recognized native flyout already created. It verifies
+suppression while the tray thread is briefly paused, delayed show events and
+volume/system-mode cancellation, then restores the original indicator setting.
+Microsoft documents the callback affinity and asynchronous delivery in
+[SetWinEventHook](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setwineventhook).
+The display clip and region ownership follow
+[SetWindowRgn](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setwindowrgn).
+
 Native threads use `_beginthreadex` to initialize CRT thread state. An immutable
 Sendable closure is retained until its entry point takes ownership; a noncopyable
 handle closes independently of the running thread. An auto-reset kernel event

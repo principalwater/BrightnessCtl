@@ -75,14 +75,12 @@ final class TrayApplication {
                 Diagnostics.write("input: configured hotkey \(index + 1) is already registered")
             }
         }
-        if settings.grabFunctionKeys {
-            var raw = RAWINPUTDEVICE(usUsagePage: 0x0C, usUsage: 1, dwFlags: DWORD(RIDEV_INPUTSINK), hwndTarget: window)
-            RegisterRawInputDevices(&raw, 1, UINT(MemoryLayout<RAWINPUTDEVICE>.size))
-        }
         keyboard = try KeyboardInput(
             destination: MessageDestination(window), enabled: settings.grabFunctionKeys,
             allowInjected: settings.interceptInjectedKeys)
-        systemIndicator = SystemIndicator(destination: MessageDestination(window))
+        systemIndicator = try SystemIndicator(
+            destination: MessageDestination(window), custom: settings.indicator == .custom,
+            hardwareKeys: settings.grabFunctionKeys)
         SetTimer(window, 1, 3000, nil)
         queueHardwareMaximum()
         Diagnostics.write(
@@ -142,26 +140,17 @@ final class TrayApplication {
             return DefWindowProcW(window, message, value, data)
         }
         if message == taskbarCreated {
-            systemIndicator?.refreshShell()
             trayAdded = false
             updateTray()
             return 0
         }
-        if message == systemIndicator?.shellMessage {
-            systemIndicator?.shellTrigger(value, custom: settings.indicator == .custom)
-            return 0
-        }
         switch message {
-        case systemIndicatorMessage:
-            systemIndicator?.shown(
-                Int(Int64(bitPattern: value)), timestamp: DWORD(truncatingIfNeeded: data),
-                custom: settings.indicator == .custom)
-            return 0
         case brightnessMessage:
             guard !exiting else { return 0 }
             if value == 5 {
                 do {
                     settings.indicator = try Settings().indicator
+                    systemIndicator?.setCustom(settings.indicator == .custom)
                     if let osd { ShowWindow(osd, Int32(SW_HIDE)) }
                     return LRESULT(state.level.percent + 1)
                 } catch {
@@ -189,15 +178,12 @@ final class TrayApplication {
                 _ = apply(command: 1, value: 0, show: true)
             }
             return 0
-        case UINT(WM_INPUT):
-            if settings.grabFunctionKeys && !exiting { handleRawInput(HRAWINPUT(bitPattern: Int(data))) }
         case UINT(WM_TIMER):
             guard !exiting else { return 0 }
             if value == 2 {
                 flushSteps()
             } else {
                 _ = apply(command: 0, show: false)
-                systemIndicator?.refreshShell()
                 updateTray()
                 queueHardwareMaximum()
             }
@@ -245,7 +231,10 @@ final class TrayApplication {
         do {
             state = try displayCommand(controller, command: command, value: value)
             lastApply = GetTickCount64()
-            if command == 3 { settings.indicator = try Settings().indicator }
+            if command == 3 {
+                settings.indicator = try Settings().indicator
+                systemIndicator?.setCustom(settings.indicator == .custom)
+            }
             updateTray()
             if show { showOSD() }
             return true
@@ -313,6 +302,7 @@ final class TrayApplication {
         } else if selected == 2001 || selected == 2002 {
             do {
                 try settings.setIndicator(selected == 2001 ? .custom : .system)
+                systemIndicator?.setCustom(settings.indicator == .custom)
                 if let osd { ShowWindow(osd, Int32(SW_HIDE)) }
             } catch { Diagnostics.write("indicator: \(error)") }
         } else if [10, 25, 50, 75, 100].contains(selected) {
@@ -327,9 +317,13 @@ final class TrayApplication {
         var info = MONITORINFO()
         info.cbSize = DWORD(MemoryLayout<MONITORINFO>.size)
         guard GetMonitorInfoW(monitor, &info) else { return }
-        // Move invisibly to the target first so per-monitor DPI refers to it.
-        SetWindowPos(
-            osd, nil, info.rcWork.left, info.rcWork.top, 0, 0, UINT(SWP_NOACTIVATE | SWP_NOZORDER | SWP_NOSIZE))
+        // Repeated updates stay at the final position. Only a monitor change
+        // needs an initial DPI move, and that move must happen while hidden.
+        if MonitorFromWindow(osd, DWORD(MONITOR_DEFAULTTONEAREST)) != monitor {
+            SetWindowPos(
+                osd, nil, info.rcWork.left, info.rcWork.top, 0, 0,
+                UINT(SWP_NOACTIVATE | SWP_NOZORDER | SWP_NOSIZE | SWP_HIDEWINDOW))
+        }
         let scale = Double(GetDpiForWindow(osd)) / 96
         let width = Int32(280 * scale)
         let height = Int32(92 * scale)
@@ -403,46 +397,6 @@ final class TrayApplication {
         } catch {
             gate.busy.withLock { $0 = false }
             Diagnostics.write("hardware thread: \(error)")
-        }
-    }
-
-    private func handleRawInput(_ handle: HRAWINPUT?) {
-        guard let handle else { return }
-        var size: UINT = 0
-        let headerSize = UINT(MemoryLayout<RAWINPUTHEADER>.size)
-        guard GetRawInputData(handle, UINT(RID_INPUT), nil, &size, headerSize) == 0, size > headerSize + 8,
-            size <= 65536
-        else { return }
-        let buffer = UnsafeMutableRawPointer.allocate(byteCount: Int(size), alignment: MemoryLayout<RAWINPUT>.alignment)
-        defer { buffer.deallocate() }
-        guard GetRawInputData(handle, UINT(RID_INPUT), buffer, &size, headerSize) == size else { return }
-        let header = buffer.load(as: RAWINPUTHEADER.self)
-        guard header.dwType == DWORD(RIM_TYPEHID) else { return }
-        let reportSize = Int(buffer.advanced(by: Int(headerSize)).load(as: DWORD.self))
-        let count = Int(buffer.advanced(by: Int(headerSize) + 4).load(as: DWORD.self))
-        guard reportSize > 0, count > 0, count <= 1024, reportSize <= (Int(size) - Int(headerSize) - 8) / count else {
-            return
-        }
-        var preparsedSize: UINT = 0
-        guard GetRawInputDeviceInfoW(header.hDevice, UINT(RIDI_PREPARSEDDATA), nil, &preparsedSize) != UINT.max,
-            preparsedSize > 0, preparsedSize <= 65536
-        else { return }
-        let preparsed = UnsafeMutableRawPointer.allocate(byteCount: Int(preparsedSize), alignment: 8)
-        defer { preparsed.deallocate() }
-        guard GetRawInputDeviceInfoW(header.hDevice, UINT(RIDI_PREPARSEDDATA), preparsed, &preparsedSize) != UINT.max
-        else { return }
-        for index in 0..<count {
-            var usages = Array(repeating: USAGE(0), count: 64)
-            var usageCount = ULONG(usages.count)
-            let status = HidP_GetUsages(
-                HidP_Input, 0x0C, 0, &usages, &usageCount, OpaquePointer(preparsed),
-                buffer.advanced(by: Int(headerSize) + 8 + index * reportSize).assumingMemoryBound(to: CChar.self),
-                ULONG(reportSize))
-            if status >= 0 {
-                for usage in usages.prefix(min(Int(usageCount), usages.count)) {
-                    if usage == 0x6F { queue(1) } else if usage == 0x70 { queue(-1) }
-                }
-            }
         }
     }
 

@@ -5,9 +5,10 @@ physical monitor. It scales the selected display's scanout gamma through native
 Windows WDDM APIs and keeps its DDC/CI backlight at maximum. AMD ADL RGB gain is
 available when the native driver path cannot be opened.
 
-Version **0.5.2** packages the Swift application as one executable with its runtime
-linked in: about **2.3 MB zipped**, down from 23.6 MB in 0.5.1. That release added
-indicator selection to the Swift implementation introduced in 0.5.0. Releases 0.1 and 0.1.1
+Version **0.5.3** suppresses recognized Windows brightness flyouts on an independent
+Win32 thread, including while the tray UI is busy. It retains 0.5.2's single executable
+with its Swift runtime linked in: about **2.3 MB zipped**, down from 23.6 MB in 0.5.1.
+That release added indicator selection to the Swift implementation introduced in 0.5.0. Releases 0.1 and 0.1.1
 retain their original C# implementation in their tags and release archives.
 
 ## Compatibility
@@ -77,9 +78,13 @@ or use `osd custom` / `osd system`. The choice is saved and applied immediately;
 it does not change the monitor, input bindings or brightness. The default is
 `custom`, which shows the selected monitor's software percentage.
 
-In `custom` mode, recognized Windows brightness flyouts are hidden only after a
-brightness Shell event. Volume/media events cancel suppression; unknown windows
-are left alone. This compatibility path uses optional internal Shell signatures
+In `custom` mode, recognized, unshaped Windows flyout hosts receive an empty
+window region before brightness is shown, preventing a first-frame flash.
+An independent observer processes brightness HID input before queueing display work.
+Volume/media events restore normal rendering; it is also restored in system mode,
+on exit, by the watchdog after a crash and on the next start. Existing window shapes
+retain the scoped hide fallback; unknown windows are left alone.
+This compatibility path uses optional internal Shell signatures
 and fails closed on unrecognized Windows versions or OEM indicators.
 
 `system` suppresses BrightnessCtl's own OSD and leaves the existing Windows or

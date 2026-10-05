@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 import BrightnessCore
+import Synchronization
 import WinSDK
 
 let instanceMutex = "Local\\BrightnessCtl.SingleInstance"
@@ -144,9 +145,18 @@ func runWatchdog(owner: UInt32, started: UInt64) throws {
     }
     let lock = try InstanceLock(timeout: 1000)
     guard lock.acquired else { return }
+    NativeFlyout.restore(owner: owner, started: started)
     try recoverOutput(owner: owner, started: started)
 }
+private let watchdogStarted = Mutex(false)
 func startWatchdog() throws {
+    try watchdogStarted.withLock { started in
+        guard !started else { return }
+        try spawnWatchdog()
+        started = true
+    }
+}
+private func spawnWatchdog() throws {
     let executable = executablePath()
     let ticks = try processStartTicks(GetCurrentProcess())
     var command = Array("\"\(executable)\" --watchdog \(GetCurrentProcessId()) \(ticks)".utf16) + [0]

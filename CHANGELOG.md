@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.5.3 — 2026-10-05
+
+- Prevent the Windows brightness flyout from slipping through while the tray UI
+  is busy. Observe Shell triggers and show events on an independent Win32 thread,
+  and hide recognized brightness windows without additional asynchronous queue hops.
+- Pre-clip recognized, unshaped Shell hosts using native window regions so their
+  first frame cannot flash. Process brightness HID input on the observer before
+  queueing display work; restore the region for volume/media and system mode.
+- Restore owned window regions on exit, watchdog recovery and the next start.
+  Window properties identify the exact process lifetime; existing shapes and
+  unrelated windows are preserved. Shaped hosts retain the scoped hide fallback.
+- Add a native flyout regression check covering blocked UI, delayed shows, media
+  cancellation and indicator mode changes. Preserve brightness and monitor settings.
+- Keep the custom OSD at its final position during repeated updates. Move it for
+  a monitor/DPI change only while hidden, preventing a top-left corner flash.
+
 ## 0.5.2
 
 - Reduce the portable ZIP from 23.6 MB to approximately 2.3 MB. Link the official
