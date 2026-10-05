@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 
 import BrightnessCore
-import Foundation
 import Synchronization
 import WinSDK
 import WindowsDisplayABI
@@ -41,7 +40,7 @@ final class TrayApplication {
 
     init(settings: Settings) throws {
         self.settings = settings
-        controller = DisplayController(settings: settings)
+        controller = try DisplayController(settings: settings)
         do { state = try displayCommand(controller, command: 0) } catch {
             Diagnostics.write("initial display unavailable: \(error)")
             state = DisplayState(level: settings.brightness, device: "", backend: "unavailable", connected: false)
@@ -396,9 +395,14 @@ final class TrayApplication {
             })
         else { return }
         lastHardwareCheck = now
-        Thread.detachNewThread {
-            defer { gate.busy.withLock { $0 = false } }
-            do { _ = try ensureHardwareMaximum(displayID: id) } catch { Diagnostics.write("hardware: \(error)") }
+        do {
+            _ = try NativeThread(name: "BrightnessCtl hardware brightness") {
+                defer { gate.busy.withLock { $0 = false } }
+                do { _ = try ensureHardwareMaximum(displayID: id) } catch { Diagnostics.write("hardware: \(error)") }
+            }
+        } catch {
+            gate.busy.withLock { $0 = false }
+            Diagnostics.write("hardware thread: \(error)")
         }
     }
 
@@ -465,7 +469,7 @@ private func parseHotkey(_ text: String) -> (modifiers: UINT, key: UINT)? {
     var modifiers: UINT = 0
     var key: UINT = 0
     for part in text.lowercased().split(separator: "+") {
-        let part = part.trimmingCharacters(in: .whitespaces)
+        let part = part.trimmingWhitespace()
         switch part {
         case "ctrl", "control": modifiers |= UINT(MOD_CONTROL)
         case "alt": modifiers |= UINT(MOD_ALT)

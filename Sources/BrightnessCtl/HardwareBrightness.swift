@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-import Foundation
 import WinSDK
 import WindowsDisplayABI
 
@@ -23,7 +22,7 @@ func monitorForDevice(_ device: String) -> HMONITOR? {
                 let success = withUnsafeMutablePointer(to: &info) {
                     $0.withMemoryRebound(to: MONITORINFO.self, capacity: 1) { GetMonitorInfoW(monitor, $0) }
                 }
-                if success && wideString(info.szDevice).caseInsensitiveCompare(pointer.pointee.device) == .orderedSame {
+                if success && equalWindowsNames(wideString(info.szDevice), pointer.pointee.device) {
                     pointer.pointee.monitor = monitor
                 }
                 return true
@@ -55,7 +54,7 @@ func ensureHardwareMaximum(displayID: String) throws -> String {
                 read = true
                 break
             }
-            Thread.sleep(forTimeInterval: 0.04)
+            Sleep(40)
         }
         guard read, maximum > minimum else {
             allMaximum = false
@@ -68,10 +67,10 @@ func ensureHardwareMaximum(displayID: String) throws -> String {
                     set = true
                     break
                 }
-                Thread.sleep(forTimeInterval: 0.04)
+                Sleep(40)
             }
             if !set { set = SetVCPFeature(physical.hPhysicalMonitor, 0x10, maximum) }
-            Thread.sleep(forTimeInterval: 0.08)
+            Sleep(80)
             if !set || !GetMonitorBrightness(physical.hPhysicalMonitor, &minimum, &current, &maximum)
                 || current != maximum
             {

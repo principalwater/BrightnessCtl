@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-import Foundation
 import Synchronization
 import WinSDK
 

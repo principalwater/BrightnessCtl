@@ -1,4 +1,4 @@
-param([string]$Version = '0.5.1', [string]$SwiftVersion = '6.4.0')
+param([string]$Version = '0.5.2', [string]$SwiftVersion = '6.4.0')
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path $PSScriptRoot -Parent
 if ($Version -notmatch '^\d+\.\d+(?:\.\d+)?(?:-[a-z0-9.-]+)?$') { throw 'Invalid package version.' }
@@ -13,6 +13,8 @@ Copy-Item -LiteralPath (Join-Path $repoRoot 'Licenses') -Destination $packageDir
 Copy-Item -LiteralPath (Join-Path $repoRoot 'docs') -Destination $packageDirectory -Recurse
 $archivePath = "$packageDirectory.zip"
 Compress-Archive -Path (Join-Path $packageDirectory '*') -DestinationPath $archivePath -Force
+$size = (Get-Item -LiteralPath $archivePath).Length
+if ($size -gt 3000000) { throw "Archive exceeds the 3 MB size budget: $size bytes." }
 $digest = (Get-FileHash -LiteralPath $archivePath -Algorithm SHA256).Hash.ToLowerInvariant()
 [IO.File]::WriteAllText("$archivePath.sha256", ($digest + '  ' + [IO.Path]::GetFileName($archivePath) + "`n"), [Text.Encoding]::ASCII)
-Write-Host "Packaged $archivePath"
+Write-Host "Packaged $archivePath ($size bytes)"

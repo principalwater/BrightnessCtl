@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.5.2
+
+- Reduce the portable ZIP from 23.6 MB to approximately 2.3 MB. Link the official
+  Swift runtime statically into one executable; remove Foundation and ICU dependencies.
+- Use CRT-initialized native threads, kernel-event executor wakeups, CreateProcessW
+  watchdog startup, ordinal Windows name comparisons and native file I/O.
+- Preserve the existing JSON status/recovery schemas with exact integer decoding,
+  bounded reads, strict UTF-8, duplicate-key checks and atomic file replacement.
+- Add Foundation compatibility tests and native storage self-tests. Retain output
+  selection, 5% steps, indicator settings, calibration recovery and capture behavior.
+- Remove only previously installed runtime DLLs listed in the old installation manifest.
+
+
 ## 0.5.1 — 2026-10-05
 
 - Add an immediately applied, persistent indicator choice in the tray menu and

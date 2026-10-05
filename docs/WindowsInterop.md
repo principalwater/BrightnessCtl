@@ -30,6 +30,16 @@ message threads. Hook callbacks have no allocation, I/O or driver calls. Mutexes
 protect shared completion state; unchecked Sendable declarations explain their
 ownership invariant.
 
+Native threads use `_beginthreadex` to initialize CRT thread state. An immutable
+Sendable closure is retained until its entry point takes ownership; a noncopyable
+handle closes independently of the running thread. An auto-reset kernel event
+wakes the display executor, which drains its mutex-protected queue before waiting.
+Stopping drains accepted jobs before the thread returns. Actor lifetime keeps
+timed-out replies alive until their driver work finishes.
+
+The release links the official static runtime and uses native Win32 file/process
+APIs. See [packaging notes](Packaging.md) for the measured dependency reduction.
+
 ## A WinSDK overlay limitation
 
 Swift 6.4 imports `GetMessageW` and `TrackPopupMenu` as Bool. Windows defines signed

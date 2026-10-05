@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-import Foundation
 import Synchronization
 import WinSDK
 import WindowsDisplayABI
@@ -59,7 +58,7 @@ final class KeyboardInput: @unchecked Sendable {
     private let destination: MessageDestination
     private let enabled: Bool
     private let allowInjected: Bool
-    private var thread: Thread?
+    private var thread: NativeThread?
 
     init(destination: MessageDestination, enabled: Bool, allowInjected: Bool) throws {
         self.destination = destination
@@ -67,10 +66,7 @@ final class KeyboardInput: @unchecked Sendable {
         self.allowInjected = allowInjected
         ready = try OwnedHandle(CreateEventW(nil, true, false, nil))
         finished = try OwnedHandle(CreateEventW(nil, true, false, nil))
-        let thread = Thread { [weak self] in self?.run() }
-        thread.name = "BrightnessCtl keyboard input"
-        self.thread = thread
-        thread.start()
+        thread = try NativeThread(name: "BrightnessCtl keyboard input") { [weak self] in self?.run() }
         guard WaitForSingleObject(ready.raw, 5000) == DWORD(WAIT_OBJECT_0) else {
             throw WindowsError.unsupported("Keyboard thread did not start.")
         }

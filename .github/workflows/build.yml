@@ -25,6 +25,11 @@ jobs:
         run: |
           $process = Start-Process ./artifacts/BrightnessCtl.exe -ArgumentList '--abi-check' -Wait -PassThru -NoNewWindow
           if ($process.ExitCode -ne 0) { throw 'ABI check failed' }
+      - name: Check native storage
+        shell: pwsh
+        run: |
+          $process = Start-Process ./artifacts/BrightnessCtl.exe -ArgumentList '--test-storage' -Wait -PassThru -NoNewWindow
+          if ($process.ExitCode -ne 0) { throw 'Storage check failed' }
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:

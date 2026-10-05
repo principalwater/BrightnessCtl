@@ -5,8 +5,9 @@ physical monitor. It scales the selected display's scanout gamma through native
 Windows WDDM APIs and keeps its DDC/CI backlight at maximum. AMD ADL RGB gain is
 available when the native driver path cannot be opened.
 
-Version **0.5.1** adds indicator selection to the Swift implementation introduced
-in 0.5.0. Releases 0.1 and 0.1.1
+Version **0.5.2** packages the Swift application as one executable with its runtime
+linked in: about **2.3 MB zipped**, down from 23.6 MB in 0.5.1. That release added
+indicator selection to the Swift implementation introduced in 0.5.0. Releases 0.1 and 0.1.1
 retain their original C# implementation in their tags and release archives.
 
 ## Compatibility
@@ -18,7 +19,8 @@ retain their original C# implementation in their tags and release archives.
   Windows API but have not yet been tested on hardware. Drivers can reject gamma
   control or ownership, particularly when a fullscreen app owns the output.
 - Microsoft Visual C++ 2015–2022 x64 Redistributable is required. Release packages
-  include Swift runtime libraries; the compiler is not required.
+  contain one executable with the Swift runtime linked statically; neither the
+  Swift compiler nor separate Swift DLLs are required.
 - Enable DDC/CI in the monitor menu to enforce maximum backlight. Software control
   can work without DDC; `info` reports when maximum backlight is unconfirmed.
 
@@ -120,11 +122,16 @@ Swift Testing runs without modifying a monitor. On an interactive desktop,
 `scripts/test-input.ps1` injects three F2 taps into its own hook and checks a
 2.4-second UI stall without changing brightness. The core also supports
 `swift test` with Swift 6.4 on macOS 26 or later.
+`BrightnessCtl.exe --test-storage` exercises native atomic file operations in
+a temporary directory without reading user settings or controlling a monitor.
 
 There is no telemetry, networking, account integration or updater. Local settings,
 recovery files, status and logs are excluded from Git and packages. Review logs
 before sharing: IDs and error messages can identify devices or local paths.
 Release builds omit debug information that could contain developer source paths.
+The size reduction removes Foundation/ICU dependencies, using Win32 threads,
+processes and file I/O and a bounded Swift codec for the existing state files.
+See [binary size and packaging](docs/Packaging.md) for measurements and tradeoffs.
 
 MIT licensed. BetterDisplay and MonitorControl were conceptual references; their
 application code was not copied. AMD declarations and bundled Swift runtimes retain

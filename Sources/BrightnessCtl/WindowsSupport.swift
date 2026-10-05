@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-import Foundation
 import Synchronization
 import WinSDK
 import WindowsDisplayABI
@@ -62,16 +61,34 @@ enum Diagnostics {
     private static let lock = Mutex(())
     static func write(_ message: String) {
         lock.withLock { _ in
-            let path = Settings.directory.appendingPathComponent("startup.log")
-            try? FileManager.default.createDirectory(at: Settings.directory, withIntermediateDirectories: true)
-            if !FileManager.default.fileExists(atPath: path.path) {
-                _ = FileManager.default.createFile(atPath: path.path, contents: nil)
+            guard let directory = try? NativeFiles.directory(), let path = try? NativeFiles.path("startup.log") else {
+                return
             }
-            let line = "\(Date.now.formatted(.iso8601))  \(message)\r\n"
-            guard let data = line.data(using: .utf8), let handle = try? FileHandle(forWritingTo: path) else { return }
-            defer { try? handle.close() }
-            _ = try? handle.seekToEnd()
-            try? handle.write(contentsOf: data)
+            try? NativeFiles.createDirectory(directory)
+            let raw = withWideString(path) {
+                CreateFileW(
+                    $0, DWORD(FILE_APPEND_DATA), DWORD(FILE_SHARE_READ | FILE_SHARE_WRITE), nil, DWORD(OPEN_ALWAYS),
+                    DWORD(FILE_ATTRIBUTE_NORMAL), nil)
+            }
+            guard let handle = try? OwnedHandle(raw) else { return }
+            var time = SYSTEMTIME()
+            GetSystemTime(&time)
+            func padded(_ value: WORD, _ width: Int = 2) -> String {
+                let text = String(value)
+                return String(repeating: "0", count: max(0, width - text.count)) + text
+            }
+            let date =
+                "\(padded(time.wYear, 4))-\(padded(time.wMonth))-\(padded(time.wDay))T\(padded(time.wHour)):\(padded(time.wMinute)):\(padded(time.wSecond))Z"
+            let bytes = Array("\(date)  \(message)\r\n".utf8)
+            var written: DWORD = 0
+            _ = bytes.withUnsafeBytes { WriteFile(handle.raw, $0.baseAddress, DWORD($0.count), &written, nil) }
         }
+    }
+}
+
+/// Windows identifiers and paths use ordinal case folding, independent of locale.
+func equalWindowsNames(_ first: String, _ second: String) -> Bool {
+    withWideString(first) { lhs in
+        withWideString(second) { rhs in CompareStringOrdinal(lhs, -1, rhs, -1, true) == CSTR_EQUAL }
     }
 }

@@ -1,14 +1,9 @@
 // SPDX-License-Identifier: MIT
 
 import BrightnessCore
-import Foundation
 
 /// Portable user settings. Hardware identities remain only in the local file.
 struct Settings: Sendable {
-    static let directory = URL(
-        fileURLWithPath: ProcessInfo.processInfo.environment["LOCALAPPDATA"]
-            ?? URL.homeDirectory.appendingPathComponent("AppData/Local").path
-    ).appendingPathComponent("BrightnessCtl")
     var targetID: String?
     var legacyTarget: String?
     var step = 5
@@ -21,9 +16,9 @@ struct Settings: Sendable {
     var brightness: BrightnessLevel
 
     init() throws {
-        try FileManager.default.createDirectory(at: Self.directory, withIntermediateDirectories: true)
-        let configuration = Self.directory.appendingPathComponent("config.ini")
-        if !FileManager.default.fileExists(atPath: configuration.path) {
+        try NativeFiles.createDirectory(NativeFiles.directory())
+        let configuration = try NativeFiles.path("config.ini")
+        if !NativeFiles.exists(configuration) {
             let defaults = [
                 "# BrightnessCtl: one physical SDR display. Use CLI list/select.",
                 "step=5",
@@ -39,20 +34,20 @@ struct Settings: Sendable {
                 "targetDisplay=",
                 "",
             ].joined(separator: "\r\n")
-            try Data(defaults.utf8).write(to: configuration, options: .atomic)
+            try NativeFiles.write(Array(defaults.utf8), to: configuration)
         }
-        let brightnessFile = Self.directory.appendingPathComponent("software.txt")
+        let brightnessFile = try NativeFiles.path("software.txt")
         let saved =
-            FileManager.default.fileExists(atPath: brightnessFile.path)
-            ? try String(contentsOf: brightnessFile, encoding: .utf8) : ""
+            NativeFiles.exists(brightnessFile)
+            ? try NativeFiles.text(brightnessFile) : ""
         brightness = try BrightnessLevel(
-            max(0, min(100, Int(saved.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 100)))
-        let content = try String(contentsOf: configuration, encoding: .utf8)
-        for line in content.components(separatedBy: .newlines) {
+            max(0, min(100, Int(saved.trimmingWhitespace()) ?? 100)))
+        let content = try NativeFiles.text(configuration)
+        for line in content.split(whereSeparator: \.isNewline) {
             let parts = line.split(separator: "=", maxSplits: 1, omittingEmptySubsequences: false)
             guard parts.count == 2 else { continue }
-            let key = parts[0].trimmingCharacters(in: .whitespaces).lowercased()
-            let value = parts[1].trimmingCharacters(in: .whitespaces)
+            let key = parts[0].trimmingWhitespace().lowercased()
+            let value = parts[1].trimmingWhitespace()
             switch key {
             case "targetdisplay": targetID = value.isEmpty ? nil : value
             case "targetoutput": legacyTarget = value.isEmpty ? nil : value
@@ -73,8 +68,7 @@ struct Settings: Sendable {
     }
 
     func saveBrightness(_ level: BrightnessLevel) throws {
-        try Data("\(level.percent)\r\n".utf8).write(
-            to: Self.directory.appendingPathComponent("software.txt"), options: .atomic)
+        try NativeFiles.write(Array("\(level.percent)\r\n".utf8), to: NativeFiles.path("software.txt"))
     }
 
     mutating func select(_ id: String) throws {
@@ -89,13 +83,13 @@ struct Settings: Sendable {
     }
 
     private func setValue(_ value: String, forKey key: String) throws {
-        var content = try String(contentsOf: Self.directory.appendingPathComponent("config.ini"), encoding: .utf8)
-        content = content.replacingOccurrences(of: "\r\n", with: "\n").components(separatedBy: "\n")
+        var content = try NativeFiles.text(NativeFiles.path("config.ini"))
+        content = content.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline)
             .filter { line in
                 line.split(separator: "=", maxSplits: 1, omittingEmptySubsequences: false).first?
-                    .trimmingCharacters(in: .whitespaces).lowercased() != key.lowercased()
-            }.joined(separator: "\r\n").trimmingCharacters(in: .newlines)
+                    .trimmingWhitespace().lowercased() != key.lowercased()
+            }.joined(separator: "\r\n").trimmingWhitespace()
         content += "\r\n\(key)=\(value)\r\n"
-        try Data(content.utf8).write(to: Self.directory.appendingPathComponent("config.ini"), options: .atomic)
+        try NativeFiles.write(Array(content.utf8), to: NativeFiles.path("config.ini"))
     }
 }

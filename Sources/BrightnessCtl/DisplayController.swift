@@ -1,14 +1,26 @@
 // SPDX-License-Identifier: MIT
 
 import BrightnessCore
-import Foundation
 import WinSDK
 
-struct DisplayState: Sendable, Codable, Equatable {
+struct DisplayState: Sendable, Equatable {
     let level: BrightnessLevel
     let device: String
     let backend: String
     let connected: Bool
+    func encoded() -> [UInt8] {
+        StateJSON.encode([
+            "level": .unsigned(UInt64(level.percent)), "device": .string(device),
+            "backend": .string(backend), "connected": .bool(connected),
+        ])
+    }
+    static func decode(_ bytes: [UInt8]) throws -> Self {
+        let fields = try StateJSON.decode(bytes)
+        guard let percentage = fields["level"]?.integer, let device = fields["device"]?.string,
+            let backend = fields["backend"]?.string, let connected = fields["connected"]?.bool
+        else { throw WindowsError.unsupported("Invalid display status.") }
+        return Self(level: try BrightnessLevel(percentage), device: device, backend: backend, connected: connected)
+    }
 }
 private final class NativeBackend {
     let session: NativeGammaSession
@@ -16,7 +28,7 @@ private final class NativeBackend {
 }
 /// All driver state and recovery I/O are isolated to one dedicated executor.
 actor DisplayController {
-    nonisolated let executor = DisplayExecutor()
+    nonisolated let executor: DisplayExecutor
     nonisolated var unownedExecutor: UnownedSerialExecutor { executor.asUnownedSerialExecutor() }
     private var settings: Settings
     private var output: DisplayOutput?
@@ -30,7 +42,8 @@ actor DisplayController {
     private var exiting = false
     private var lastState: DisplayState?
 
-    init(settings: Settings) {
+    init(settings: Settings) throws {
+        executor = try DisplayExecutor()
         self.settings = settings
         level = settings.brightness
     }
@@ -82,7 +95,7 @@ actor DisplayController {
                 return
             }
             if let match = try driver.enumerate().first(where: { $0.legacyID == legacy }) {
-                saved = eligible.first(where: { $0.device.caseInsensitiveCompare(match.device) == .orderedSame })?.id
+                saved = eligible.first(where: { equalWindowsNames($0.device, match.device) })?.id
             }
             if saved == nil {
                 _ = try restoreAndRelease()
@@ -107,7 +120,7 @@ actor DisplayController {
             if let amd, let previous = amdOutput,
                 let refreshed = try amd.enumerate().first(where: {
                     $0.legacyID == previous.legacyID
-                        && $0.device.caseInsensitiveCompare(selected.device) == .orderedSame
+                        && equalWindowsNames($0.device, selected.device)
                 })
             {
                 amdOutput = refreshed
@@ -124,7 +137,7 @@ actor DisplayController {
         }
         if native == nil, settings.backend != "native", let driver = try? AMDControl(),
             let match = try driver.enumerate().first(where: {
-                $0.device.caseInsensitiveCompare(selected.device) == .orderedSame
+                equalWindowsNames($0.device, selected.device)
             })
         {
             baselineBrightness = try driver.get(match, type: 1)
@@ -166,9 +179,8 @@ actor DisplayController {
                         .scaled(to: target)
                     try amd.set(amdOutput, brightness: Int(gain.brightness), contrast: Int(gain.contrast))
                 }
-                if target != level
-                    || !FileManager.default.fileExists(
-                        atPath: Settings.directory.appendingPathComponent("software.txt").path)
+                if try target != level
+                    || !NativeFiles.exists(NativeFiles.path("software.txt"))
                 {
                     try settings.saveBrightness(target)
                 }
@@ -206,8 +218,7 @@ actor DisplayController {
             backend: output == nil ? "unavailable" : native == nil ? "AMD RGB gain" : "native WDDM gamma",
             connected: output != nil)
         if state != lastState {
-            try JSONEncoder().encode(state).write(
-                to: Settings.directory.appendingPathComponent("display-status.json"), options: .atomic)
+            try NativeFiles.write(state.encoded(), to: NativeFiles.path("display-status.json"))
             lastState = state
         }
         return state

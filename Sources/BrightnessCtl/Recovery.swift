@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 
 import BrightnessCore
-import Foundation
 import WinSDK
 
 let instanceMutex = "Local\\BrightnessCtl.SingleInstance"
@@ -33,7 +32,7 @@ func executablePath() -> String {
     let count = GetModuleFileNameW(nil, &buffer, DWORD(buffer.count))
     return String(decoding: buffer.prefix(Int(count)), as: UTF16.self)
 }
-struct ColorLease: Codable, Sendable, Equatable {
+struct ColorLease: Sendable, Equatable {
     var version = 1
     let owner: UInt32
     let started: UInt64
@@ -44,21 +43,40 @@ struct ColorLease: Codable, Sendable, Equatable {
     let contrast: Int?
     let gamma: [UInt16]?
 
-    static let path = Settings.directory.appendingPathComponent("scanout-lease.json")
     static func read() throws -> Self? {
-        guard FileManager.default.fileExists(atPath: path.path) else { return nil }
-        let data = try Data(contentsOf: path)
-        guard data.count < 32768 else { throw WindowsError.unsupported("Invalid recovery-state size.") }
-        let lease = try JSONDecoder().decode(Self.self, from: data)
+        let path = try NativeFiles.path("scanout-lease.json")
+        guard NativeFiles.exists(path) else { return nil }
+        let fields = try StateJSON.decode(NativeFiles.read(path))
+        guard fields["version"]?.integer == 1, let owner = fields["owner"]?.unsigned.flatMap(UInt32.init(exactly:)),
+            let started = fields["started"]?.unsigned, let id = fields["displayID"]?.string,
+            let backend = fields["backend"]?.string
+        else { throw WindowsError.unsupported("Invalid recovery state.") }
+        func optional<Value>(_ key: String, _ extract: (StateField) -> Value?) throws -> Value? {
+            guard let field = fields[key], field != .null else { return nil }
+            guard let value = extract(field) else { throw WindowsError.unsupported("Invalid recovery field: \(key).") }
+            return value
+        }
+        let lease = ColorLease(
+            owner: owner, started: started, displayID: id, backend: backend,
+            amdID: try optional("amdID", { $0.string }), brightness: try optional("brightness", { $0.integer }),
+            contrast: try optional("contrast", { $0.integer }), gamma: try optional("gamma", { $0.words }))
         guard lease.version == 1, lease.displayID.count < 4096, ["amd", "native"].contains(lease.backend) else {
             throw WindowsError.unsupported("Unsupported output recovery state.")
         }
         return lease
     }
-    func write() throws { try JSONEncoder().encode(self).write(to: Self.path, options: .atomic) }
-    static func remove() throws {
-        if FileManager.default.fileExists(atPath: path.path) { try FileManager.default.removeItem(at: path) }
+    func write() throws {
+        var fields: [String: StateField] = [
+            "version": .unsigned(UInt64(version)), "owner": .unsigned(UInt64(owner)),
+            "started": .unsigned(started), "displayID": .string(displayID), "backend": .string(backend),
+        ]
+        if let amdID { fields["amdID"] = .string(amdID) }
+        if let brightness { fields["brightness"] = .signed(Int64(brightness)) }
+        if let contrast { fields["contrast"] = .signed(Int64(contrast)) }
+        if let gamma { fields["gamma"] = .words(gamma) }
+        try NativeFiles.write(StateJSON.encode(fields), to: NativeFiles.path("scanout-lease.json"))
     }
+    static func remove() throws { try NativeFiles.remove(NativeFiles.path("scanout-lease.json")) }
 }
 /// Called under the instance mutex before a new backend captures its baseline.
 @discardableResult
@@ -74,7 +92,7 @@ func recoverOutput(owner: UInt32? = nil, started: UInt64? = nil) throws -> Bool 
             let control = try AMDControl()
             guard let id = lease.amdID,
                 let amd = try control.enumerate().first(where: {
-                    $0.legacyID == id && $0.device.caseInsensitiveCompare(output.device) == .orderedSame
+                    $0.legacyID == id && equalWindowsNames($0.device, output.device)
                 }),
                 let brightness = lease.brightness, let contrast = lease.contrast
             else { throw WindowsError.unsupported("Invalid AMD recovery state.") }
@@ -89,9 +107,9 @@ func recoverOutput(owner: UInt32? = nil, started: UInt64? = nil) throws -> Bool 
         Diagnostics.write("recovery: original output color state restored")
     }
     // Preserve the baseline when migrating from the public 0.1.x versions.
-    let legacy = Settings.directory.appendingPathComponent("output-color-lease.txt")
-    guard FileManager.default.fileExists(atPath: legacy.path) else { return true }
-    let lines = try String(contentsOf: legacy, encoding: .utf8).split(whereSeparator: \.isNewline).map(String.init)
+    let legacy = try NativeFiles.path("output-color-lease.txt")
+    guard NativeFiles.exists(legacy) else { return true }
+    let lines = try NativeFiles.text(legacy).split(whereSeparator: \.isNewline).map(String.init)
     guard lines.count == 7, let brightness = Int(lines[3]), let contrast = Int(lines[4]) else {
         throw WindowsError.unsupported("Invalid legacy recovery state.")
     }
@@ -100,12 +118,12 @@ func recoverOutput(owner: UInt32? = nil, started: UInt64? = nil) throws -> Bool 
     guard let output = try control.enumerate().first(where: { $0.legacyID == lines[2] }) else { return false }
     guard
         try discoverDisplays().contains(where: {
-            $0.device.caseInsensitiveCompare(output.device) == .orderedSame && $0.isPhysical && !$0.isHDR
+            equalWindowsNames($0.device, output.device) && $0.isPhysical && !$0.isHDR
                 && !$0.isCloned
         })
     else { return false }
     try control.set(output, brightness: brightness, contrast: contrast)
-    try FileManager.default.removeItem(at: legacy)
+    try NativeFiles.remove(legacy)
     return true
 }
 func runWatchdog(owner: UInt32, started: UInt64) throws {
@@ -119,13 +137,19 @@ func runWatchdog(owner: UInt32, started: UInt64) throws {
     try recoverOutput(owner: owner, started: started)
 }
 func startWatchdog() throws {
-    let process = Process()
-    process.executableURL = URL(fileURLWithPath: executablePath())
-    process.arguments = [
-        "--watchdog", String(GetCurrentProcessId()), String(try processStartTicks(GetCurrentProcess())),
-    ]
-    process.standardInput = FileHandle.nullDevice
-    process.standardOutput = FileHandle.nullDevice
-    process.standardError = FileHandle.nullDevice
-    try process.run()
+    let executable = executablePath()
+    let ticks = try processStartTicks(GetCurrentProcess())
+    var command = Array("\"\(executable)\" --watchdog \(GetCurrentProcessId()) \(ticks)".utf16) + [0]
+    var startup = STARTUPINFOW()
+    startup.cb = DWORD(MemoryLayout<STARTUPINFOW>.size)
+    var process = PROCESS_INFORMATION()
+    guard
+        withWideString(
+            executable,
+            { CreateProcessW($0, &command, nil, nil, false, DWORD(CREATE_NO_WINDOW), nil, nil, &startup, &process) })
+    else {
+        throw WindowsError.api("Create watchdog", GetLastError())
+    }
+    CloseHandle(process.hThread)
+    CloseHandle(process.hProcess)
 }

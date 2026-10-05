@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-import Foundation
+import BrightnessCore
 import WinSDK
 import WindowsDisplayABI
 
@@ -39,12 +39,12 @@ private func normalizedPath(_ path: String) throws(WindowsError) -> String {
 /// Start the matching interactive task through native COM. No shell or child
 /// schtasks process is needed, and a stale task cannot launch another binary.
 func startResident() throws {
-    let taskFile = Settings.directory.appendingPathComponent("startup-task.txt")
+    let taskFile = try NativeFiles.path("startup-task.txt")
     let taskName =
-        FileManager.default.fileExists(atPath: taskFile.path)
-        ? try String(contentsOf: taskFile, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines)
+        NativeFiles.exists(taskFile)
+        ? try NativeFiles.text(taskFile).trimmingWhitespace()
         : "BrightnessCtl"
-    guard taskName.range(of: #"^BrightnessCtl(?:-S-[0-9-]+)?$"#, options: .regularExpression) != nil else {
+    guard isValidStartupTaskName(taskName) else {
         throw WindowsError.unsupported("Invalid startup task name.")
     }
     let initialized = CoInitializeEx(nil, DWORD(COINIT_MULTITHREADED.rawValue))
@@ -115,7 +115,7 @@ func startResident() throws {
         path.map { String(decoding: UnsafeBufferPointer(start: $0, count: Int(SysStringLen($0))), as: UTF16.self) }
         ?? ""
     guard !actionPath.isEmpty, arguments == nil || SysStringLen(arguments) == 0,
-        try normalizedPath(actionPath).caseInsensitiveCompare(normalizedPath(executablePath())) == .orderedSame
+        try equalWindowsNames(normalizedPath(actionPath), normalizedPath(executablePath()))
     else {
         throw WindowsError.unsupported("Startup task points to a different executable; run this version's installer.")
     }

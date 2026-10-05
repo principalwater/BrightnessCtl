@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 import BrightnessCore
-import Foundation
+import CRT
 import WinSDK
 import WindowsDisplayABI
 

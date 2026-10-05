@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-import Foundation
 import Synchronization
 import WinSDK
 
@@ -33,13 +32,13 @@ func testKeyboardInput() throws {
         return count
     }
     try tap()
-    Thread.sleep(forTimeInterval: 0.1)
+    Sleep(100)
     guard drain() == 1 else { throw WindowsError.unsupported("Input test: initial F2 was not captured.") }
     let completion = try OwnedHandle(CreateEventW(nil, true, false, nil))
     let completionAddress = UInt(bitPattern: completion.raw)
     let sendResult = Mutex(false)
-    Thread.detachNewThread {
-        Thread.sleep(forTimeInterval: 0.3)
+    _ = try NativeThread(name: "BrightnessCtl input test") {
+        Sleep(300)
         var events = [INPUT(), INPUT()]
         events[0].type = DWORD(INPUT_KEYBOARD)
         events[0].ki.wVk = 113
@@ -50,13 +49,13 @@ func testKeyboardInput() throws {
         SetEvent(HANDLE(bitPattern: completionAddress))
     }
     // A hook installed on this UI thread would time out while it is blocked.
-    Thread.sleep(forTimeInterval: 2.4)
+    Sleep(2400)
     guard WaitForSingleObject(completion.raw, 5000) == DWORD(WAIT_OBJECT_0), sendResult.withLock({ $0 }), drain() == 1
     else {
         throw WindowsError.unsupported("Input test: F2 failed during a blocked UI thread.")
     }
     try tap()
-    Thread.sleep(forTimeInterval: 0.1)
+    Sleep(100)
     guard drain() == 1, input.active else {
         throw WindowsError.unsupported("Input test: hook did not survive the blocked UI.")
     }

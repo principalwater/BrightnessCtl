@@ -73,17 +73,18 @@ its code or assets is included here. Reading that branch does not license the
 current proprietary application. BrightnessCtl does not claim to be an exact
 port, fork, or endorsed version of either project.
 
-## Swift runtime libraries
+## Swift runtime
 
-Packages include unmodified runtime DLLs from the official Swift 6.4.0 installer.
-Swift, Foundation, Foundation Essentials/Internationalization, Dispatch and the
-Blocks runtime are provided under Apache 2.0 with the Swift runtime exception.
-Full license texts from the `swift-6.4.0-RELEASE` source tag are retained in
-`Licenses/Swift.txt`, `Foundation.txt`, `SwiftFoundation.txt`, `Dispatch.txt` and
-`FoundationICU.txt`. Foundation's additional notices are in
-`Licenses/SwiftFoundation-NOTICE.txt`. Foundation ICU incorporates ICU 76.1;
-its Unicode and third-party notices are retained in `Licenses/ICU.txt`.
-The application's MIT license does not replace those runtime licenses.
+Starting with 0.5.2, packages statically link the standard library, Concurrency,
+Synchronization, WinSDK, Dispatch and Blocks runtime from the unmodified official
+Swift 6.4.0 Windows SDK. The Apache 2.0 license and Swift runtime exception remain
+in `Licenses/Swift.txt` and `Licenses/Dispatch.txt`. The application's MIT license
+does not replace those licenses. No Foundation or ICU binary is linked or bundled.
+
+The 0.5.0/0.5.1 packages included Foundation, Foundation Essentials/Internationalization
+and Foundation ICU 76.1 DLLs. Their license texts and notices remain in `Licenses`
+for reference, including the Unicode/third-party notices in `ICU.txt`. Foundation
+Essentials is used only by compatibility tests in 0.5.2, not by the application.
 
 Sources: [Swift](https://github.com/swiftlang/swift/tree/swift-6.4.0-RELEASE),
 [Foundation](https://github.com/swiftlang/swift-corelibs-foundation/tree/swift-6.4.0-RELEASE),

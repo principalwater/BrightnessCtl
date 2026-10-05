@@ -17,6 +17,8 @@ foreach ($name in @('vcruntime140.dll','vcruntime140_1.dll','msvcp140.dll')) {
 }
 $directory = Join-Path $env:LOCALAPPDATA 'BrightnessCtl'
 $executable = Join-Path $directory 'BrightnessCtl.exe'
+$previousManifest = Join-Path $directory 'runtime-files.txt'
+$previousRuntimeFiles = if (Test-Path -LiteralPath $previousManifest) { @(Get-Content -LiteralPath $previousManifest) } else { @() }
 New-Item -ItemType Directory -Path $directory -Force | Out-Null
 $stopExecutable = if (Test-Path -LiteralPath $executable) { $executable } else { $sourceExecutable }
 $stop = Start-Process -FilePath $stopExecutable -ArgumentList 'exit' -WindowStyle Hidden -Wait -PassThru
@@ -30,6 +32,12 @@ if ($remaining.Count) { throw 'BrightnessCtl is still restoring its output; insp
 # Never kill the watchdog to unlock files: it restores the original display state.
 Copy-Item -LiteralPath $sourceExecutable -Destination $executable -Force
 foreach ($name in $runtimeFiles) { Copy-Item -LiteralPath (Join-Path $sourceDirectory $name) -Destination (Join-Path $directory $name) -Force }
+foreach ($name in $previousRuntimeFiles) {
+    if ($name -match '^(swift|Foundation|_Foundation|BlocksRuntime|dispatch)[\w.-]*\.dll$' -and $name -notin $runtimeFiles) {
+        $oldFile = Join-Path $directory $name
+        if (Test-Path -LiteralPath $oldFile) { Remove-Item -LiteralPath $oldFile }
+    }
+}
 Copy-Item -LiteralPath $runtimeManifest -Destination $directory -Force
 $documentationRoot = if (Test-Path -LiteralPath (Join-Path $sourceDirectory 'LICENSE')) { $sourceDirectory } else { Split-Path $PSScriptRoot -Parent }
 foreach ($name in @('README.md','CHANGELOG.md','LICENSE','THIRD_PARTY_NOTICES.md','Licenses','docs')) {

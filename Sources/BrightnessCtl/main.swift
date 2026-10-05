@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 import BrightnessCore
-import Foundation
+import CRT
 import WinSDK
 import WindowsDisplayABI
 
@@ -31,6 +31,10 @@ func runCLI(_ args: [String]) throws -> Int32 {
     }
     if command == "--test-input" {
         try testKeyboardInput()
+        return 0
+    }
+    if command == "--test-storage" {
+        try testStorage()
         return 0
     }
     if command == "--abi-check" {
@@ -66,7 +70,7 @@ func runCLI(_ args: [String]) throws -> Int32 {
         for percent in [100, 60, 90, 60, 90, 100] {
             try session.apply(BrightnessLevel(percent))
             Console.writeLine("Native scanout: \(percent)%")
-            Thread.sleep(forTimeInterval: 4)
+            Sleep(4000)
         }
         return 0
     }
@@ -74,7 +78,7 @@ func runCLI(_ args: [String]) throws -> Int32 {
         let displays = try discoverDisplays()
         if command == "select" {
             guard args.count == 2,
-                let output = displays.first(where: { $0.id.caseInsensitiveCompare(args[1]) == .orderedSame }),
+                let output = displays.first(where: { equalWindowsNames($0.id, args[1]) }),
                 output.isPhysical, !output.isCloned, !output.isHDR
             else {
                 throw WindowsError.unsupported(
@@ -112,7 +116,7 @@ func runCLI(_ args: [String]) throws -> Int32 {
     if window == nil && operation >= 1 && operation <= 3 {
         try startResident()
         for _ in 0..<150 {
-            Thread.sleep(forTimeInterval: 0.1)
+            Sleep(100)
             window = withWideString(controlWindowTitle) { FindWindowW(nil, $0) }
             if window != nil { break }
         }
@@ -120,8 +124,8 @@ func runCLI(_ args: [String]) throws -> Int32 {
     guard let window else { throw WindowsError.unsupported("BrightnessCtl resident is not running.") }
     let current = try sendResident(window, command: operation, value: value)
     if command == "info" {
-        let data = try Data(contentsOf: Settings.directory.appendingPathComponent("display-status.json"))
-        let state = try JSONDecoder().decode(DisplayState.self, from: data)
+        let data = try NativeFiles.read(NativeFiles.path("display-status.json"))
+        let state = try DisplayState.decode(data)
         let settings = try Settings()
         Console.writeLine("Version : \(AppVersion.string) (\(AppVersion.implementation))")
         Console.writeLine("Software: \(current)%")
