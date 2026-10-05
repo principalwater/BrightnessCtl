@@ -5,7 +5,8 @@ physical monitor. It scales the selected display's scanout gamma through native
 Windows WDDM APIs and keeps its DDC/CI backlight at maximum. AMD ADL RGB gain is
 available when the native driver path cannot be opened.
 
-Version **0.5.0** introduces the Swift implementation. Releases 0.1 and 0.1.1
+Version **0.5.1** adds indicator selection to the Swift implementation introduced
+in 0.5.0. Releases 0.1 and 0.1.1
 retain their original C# implementation in their tags and release archives.
 
 ## Compatibility
@@ -58,6 +59,8 @@ are migrated only when the original target can be identified.
 ./BrightnessCtl.exe -5
 ./BrightnessCtl.exe get
 ./BrightnessCtl.exe info
+./BrightnessCtl.exe osd system
+./BrightnessCtl.exe osd custom
 ./BrightnessCtl.exe rescan
 ./BrightnessCtl.exe exit
 ```
@@ -67,11 +70,27 @@ are migrated only when the original target can be identified.
 Bare F1/F2 interception and HID consumer brightness keys are opt-in via `grabF1F2=1`.
 The hook has a dedicated thread. HID reports use Windows' HID parser.
 
+Choose **Indicator: BrightnessCtl** or **Indicator: Windows** in the tray menu,
+or use `osd custom` / `osd system`. The choice is saved and applied immediately;
+it does not change the monitor, input bindings or brightness. The default is
+`custom`, which shows the selected monitor's software percentage.
+
+In `custom` mode, recognized Windows brightness flyouts are hidden only after a
+brightness Shell event. Volume/media events cancel suppression; unknown windows
+are left alone. This compatibility path uses optional internal Shell signatures
+and fails closed on unrecognized Windows versions or OEM indicators.
+
+`system` suppresses BrightnessCtl's own OSD and leaves the existing Windows or
+keyboard-driver indicator alone. Use it if hardware brightness keys already show
+a system indicator, as on Boot Camp. System indicators depend on Windows/OEM
+support; this mode does not synthesize one for CLI/tray/custom hotkey actions or
+set its percentage. Unrecognized OEM indicators can still appear in custom mode.
+
 Edit `%LOCALAPPDATA%\BrightnessCtl\config.ini` and restart for input changes.
 Options: `step`, `up`, `down`, `max`, `min`, `grabF1F2`, `interceptInjectedKeys`,
-`restoreOnResume`, `backend=auto|native|amd`, `targetDisplay`. Empty hotkeys disable
+`restoreOnResume`, `backend=auto|native|amd`, `targetDisplay`, `osd=custom|system`. Empty hotkeys disable
 bindings. Injected F1/F2 are ignored unless `interceptInjectedKeys=1`. `rescan`
-reloads display/backend settings and preserves the current brightness.
+reloads display/backend/indicator settings and preserves the current brightness.
 
 ## Recovery and capture
 

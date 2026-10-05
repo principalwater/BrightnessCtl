@@ -29,6 +29,7 @@ final class TrayApplication {
     private var window: HWND?
     private var osd: HWND?
     private var keyboard: KeyboardInput?
+    private var systemIndicator: SystemIndicator?
     private var tray = NOTIFYICONDATAW()
     private var trayAdded = false
     private var exiting = false
@@ -82,6 +83,7 @@ final class TrayApplication {
         keyboard = try KeyboardInput(
             destination: MessageDestination(window), enabled: settings.grabFunctionKeys,
             allowInjected: settings.interceptInjectedKeys)
+        systemIndicator = SystemIndicator(destination: MessageDestination(window))
         SetTimer(window, 1, 3000, nil)
         queueHardwareMaximum()
         Diagnostics.write(
@@ -141,13 +143,33 @@ final class TrayApplication {
             return DefWindowProcW(window, message, value, data)
         }
         if message == taskbarCreated {
+            systemIndicator?.refreshShell()
             trayAdded = false
             updateTray()
             return 0
         }
+        if message == systemIndicator?.shellMessage {
+            systemIndicator?.shellTrigger(value, custom: settings.indicator == .custom)
+            return 0
+        }
         switch message {
+        case systemIndicatorMessage:
+            systemIndicator?.shown(
+                Int(Int64(bitPattern: value)), timestamp: DWORD(truncatingIfNeeded: data),
+                custom: settings.indicator == .custom)
+            return 0
         case brightnessMessage:
             guard !exiting else { return 0 }
+            if value == 5 {
+                do {
+                    settings.indicator = try Settings().indicator
+                    if let osd { ShowWindow(osd, Int32(SW_HIDE)) }
+                    return LRESULT(state.level.percent + 1)
+                } catch {
+                    Diagnostics.write("indicator: \(error)")
+                    return 0
+                }
+            }
             if value == 4 {
                 PostMessageW(window, UINT(WM_CLOSE), 0, 0)
                 return 1
@@ -176,6 +198,7 @@ final class TrayApplication {
                 flushSteps()
             } else {
                 _ = apply(command: 0, show: false)
+                systemIndicator?.refreshShell()
                 updateTray()
                 queueHardwareMaximum()
             }
@@ -223,6 +246,7 @@ final class TrayApplication {
         do {
             state = try displayCommand(controller, command: command, value: value)
             lastApply = GetTickCount64()
+            if command == 3 { settings.indicator = try Settings().indicator }
             updateTray()
             if show { showOSD() }
             return true
@@ -259,12 +283,22 @@ final class TrayApplication {
         for (id, label) in [
             (0, "Brightness: \(state.level.percent)%"), (1, "Increase by \(settings.step)%"),
             (2, "Decrease by \(settings.step)%"),
-            (100, "100%"), (75, "75%"), (50, "50%"), (25, "25%"), (10, "10%"), (3, "Reconnect display"), (4, "Quit"),
+            (100, "100%"), (75, "75%"), (50, "50%"), (25, "25%"), (10, "10%"), (3, "Reconnect display"),
         ] {
             _ = withWideString(label) {
                 AppendMenuW(menu, UINT(MF_STRING | (id == 0 ? MF_DISABLED : 0)), UINT_PTR(id), $0)
             }
         }
+        for (id, mode, label) in [
+            (2001, IndicatorMode.custom, "Indicator: BrightnessCtl"),
+            (2002, IndicatorMode.system, "Indicator: Windows"),
+        ] {
+            _ = withWideString(label) {
+                AppendMenuW(menu, UINT(MF_STRING | (settings.indicator == mode ? MF_CHECKED : 0)), UINT_PTR(id), $0)
+            }
+        }
+        CheckMenuRadioItem(menu, 2001, 2002, settings.indicator == .custom ? 2001 : 2002, UINT(MF_BYCOMMAND))
+        _ = withWideString("Quit") { AppendMenuW(menu, UINT(MF_STRING), 4, $0) }
         var point = POINT()
         GetCursorPos(&point)
         SetForegroundWindow(window)
@@ -277,13 +311,19 @@ final class TrayApplication {
             _ = apply(command: 3, show: false)
         } else if selected == 4 {
             PostMessageW(window, UINT(WM_CLOSE), 0, 0)
-        } else if selected > 4 {
+        } else if selected == 2001 || selected == 2002 {
+            do {
+                try settings.setIndicator(selected == 2001 ? .custom : .system)
+                if let osd { ShowWindow(osd, Int32(SW_HIDE)) }
+            } catch { Diagnostics.write("indicator: \(error)") }
+        } else if [10, 25, 50, 75, 100].contains(selected) {
             _ = apply(command: 1, value: Int(selected), show: true)
         }
         PostMessageW(window, UINT(WM_NULL), 0, 0)
     }
 
     private func showOSD() {
+        guard settings.indicator == .custom else { return }
         guard let osd, let monitor = monitorForDevice(state.device) else { return }
         var info = MONITORINFO()
         info.cbSize = DWORD(MemoryLayout<MONITORINFO>.size)
@@ -405,6 +445,7 @@ final class TrayApplication {
     func shutdown() {
         guard !exiting else { return }
         exiting = true
+        systemIndicator = nil
         keyboard?.stop()
         keyboard = nil
         if let window {

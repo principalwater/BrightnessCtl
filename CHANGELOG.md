@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.5.1 — 2026-10-05
+
+- Add an immediately applied, persistent indicator choice in the tray menu and
+  CLI (`osd custom|system`). The default remains BrightnessCtl's custom indicator.
+- System mode removes the duplicate BrightnessCtl OSD when hardware keys already
+  trigger a Windows/OEM indicator. Existing input, software brightness and DDC
+  behavior are preserved. This mode does not synthesize or set a system indicator.
+- Custom mode suppresses recognized Windows Shell brightness flyouts after a
+  brightness event; volume/media events cancel suppression. Unknown hosts remain
+  untouched. This is a compatibility path using optional internal Shell signatures.
+
 ## 0.5.0 — 2026-10-05
 
 - Rewrite all application behavior in Swift 6.4: Win32 tray/OSD, dedicated keyboard

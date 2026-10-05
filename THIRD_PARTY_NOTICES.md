@@ -92,6 +92,14 @@ Sources: [Swift](https://github.com/swiftlang/swift/tree/swift-6.4.0-RELEASE),
 [Foundation ICU](https://github.com/swiftlang/swift-foundation-icu/tree/swift-6.4.0-RELEASE),
 [ICU](https://github.com/unicode-org/icu/tree/release-76-1).
 
+## ModernFlyouts — Shell compatibility reference
+
+Shell flyout class/band signatures in `SystemIndicator.swift` are adapted from
+[ModernFlyouts' NativeFlyoutHandler](https://github.com/ModernFlyouts-Community/ModernFlyouts/blob/main/ModernFlyouts.Core/Interop/NativeFlyoutHandler.cs).
+The event gate, Swift implementation and brightness-only suppression are written
+for BrightnessCtl. No ModernFlyouts binary or UI assets are distributed.
+The upstream MIT license is retained in `Licenses/ModernFlyouts.txt`.
+
 ## Windows system dependencies
 
 Win32 interop declarations were written against Microsoft's public API documentation.

@@ -17,6 +17,7 @@ struct Settings: Sendable {
     var restoreOnResume = true
     var hotkeys = ["Ctrl+Alt+Up", "Ctrl+Alt+Down", "Ctrl+Alt+PageUp", "Ctrl+Alt+PageDown"]
     var backend = "auto"
+    var indicator = IndicatorMode.custom
     var brightness: BrightnessLevel
 
     init() throws {
@@ -34,6 +35,7 @@ struct Settings: Sendable {
                 "interceptInjectedKeys=0",
                 "restoreOnResume=1",
                 "backend=auto",
+                "osd=custom",
                 "targetDisplay=",
                 "",
             ].joined(separator: "\r\n")
@@ -64,6 +66,7 @@ struct Settings: Sendable {
             case "min": hotkeys[3] = value
             case "backend":
                 backend = ["auto", "amd", "native"].contains(value.lowercased()) ? value.lowercased() : "auto"
+            case "osd": indicator = IndicatorMode(rawValue: value.lowercased()) ?? .custom
             default: break
             }
         }
@@ -75,14 +78,24 @@ struct Settings: Sendable {
     }
 
     mutating func select(_ id: String) throws {
+        try setValue(id, forKey: "targetDisplay")
+        targetID = id
+    }
+
+    /// Persists an indicator choice without changing the selected monitor or level.
+    mutating func setIndicator(_ mode: IndicatorMode) throws {
+        try setValue(mode.rawValue, forKey: "osd")
+        indicator = mode
+    }
+
+    private func setValue(_ value: String, forKey key: String) throws {
         var content = try String(contentsOf: Self.directory.appendingPathComponent("config.ini"), encoding: .utf8)
         content = content.replacingOccurrences(of: "\r\n", with: "\n").components(separatedBy: "\n")
             .filter { line in
                 line.split(separator: "=", maxSplits: 1, omittingEmptySubsequences: false).first?
-                    .trimmingCharacters(in: .whitespaces).lowercased() != "targetdisplay"
+                    .trimmingCharacters(in: .whitespaces).lowercased() != key.lowercased()
             }.joined(separator: "\r\n").trimmingCharacters(in: .newlines)
-        content += "\r\ntargetDisplay=\(id)\r\n"
+        content += "\r\n\(key)=\(value)\r\n"
         try Data(content.utf8).write(to: Self.directory.appendingPathComponent("config.ini"), options: .atomic)
-        targetID = id
     }
 }

@@ -12,6 +12,23 @@ func runCLI(_ args: [String]) throws -> Int32 {
         Console.writeLine("BrightnessCtl \(AppVersion.string) (\(AppVersion.implementation))")
         return 0
     }
+    if command == "osd" {
+        guard args.count == 1 || args.count == 2 else {
+            throw WindowsError.unsupported("Use osd custom or osd system.")
+        }
+        var settings = try Settings()
+        if args.count == 2 {
+            guard let mode = IndicatorMode(rawValue: args[1].lowercased()) else {
+                throw WindowsError.unsupported("Use osd custom or osd system.")
+            }
+            try settings.setIndicator(mode)
+            if let window = withWideString(controlWindowTitle, { FindWindowW(nil, $0) }) {
+                _ = try sendResident(window, command: 5)
+            }
+        }
+        Console.writeLine(settings.indicator.rawValue)
+        return 0
+    }
     if command == "--test-input" {
         try testKeyboardInput()
         return 0
@@ -86,7 +103,7 @@ func runCLI(_ args: [String]) throws -> Int32 {
     case "exit": operation = 4
     default:
         guard let parsed = Int(command), (-100...100).contains(parsed) else {
-            throw WindowsError.unsupported("Use 0–100, +5, -5, get, info, list, select, rescan, exit.")
+            throw WindowsError.unsupported("Use 0–100, +5, -5, get, info, list, select, osd, rescan, exit.")
         }
         operation = command.hasPrefix("+") || command.hasPrefix("-") ? 2 : 1
         value = parsed
@@ -111,6 +128,7 @@ func runCLI(_ args: [String]) throws -> Int32 {
         Console.writeLine("Backend : \(state.backend)")
         Console.writeLine("Target  : \(state.connected ? state.device : "disconnected; level saved")")
         Console.writeLine("Step    : \(settings.step)%")
+        Console.writeLine("OSD     : \(settings.indicator.rawValue)")
         if let id = settings.targetID { Console.writeLine("Hardware: \(try ensureHardwareMaximum(displayID: id))") }
     } else if operation != 4 {
         Console.writeLine(String(current))
